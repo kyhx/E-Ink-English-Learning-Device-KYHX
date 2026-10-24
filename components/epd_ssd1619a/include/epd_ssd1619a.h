@@ -85,6 +85,10 @@ bool epd_partial_show_full(const uint8_t *fb, uint32_t timeout_ms);
 /* 清洁周期后重新加载 partial LUT、恢复 0x21=0x00 */
 bool epd_partial_reload_lut(const uint8_t *lut);
 
+/* 带状局刷：MUX + gate start 限制扫描到 [y0..y1]，写整条 400px 宽。 */
+bool epd_band_update(const uint8_t *frame, int y0, int y1,
+                     uint32_t timeout_ms);
+
 /* 完全按 EPaperDrive EPD_Dis_Part 语义的窗口局刷：
  * 整帧 buffer + offset，x/y 交换 + Y 反向，0x11=0x01。 */
 bool epd_epd_dis_part(const uint8_t *frame, int x0, int x1, int y0, int y1,

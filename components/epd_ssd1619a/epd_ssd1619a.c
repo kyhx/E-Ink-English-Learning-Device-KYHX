@@ -428,6 +428,15 @@ bool epd_partial_init(const uint8_t *lut)
     return true;
 }
 
+/* 恢复 300 MUX / gate start 0，供整帧刷新使用。 */
+static void epd_set_full_scan(void)
+{
+    const uint8_t full_mux[3] = { 0x2B, 0x01, 0x00 };
+    epd_cmd_data(0x01, full_mux, 3);
+    const uint8_t gs0[2] = { 0x00, 0x00 };
+    epd_cmd_data(0x0F, gs0, 2);
+}
+
 /* 已进入 partial 模式后的区域更新（不重新初始化）。 */
 bool epd_partial_update(const uint8_t *area, int x, int y, int w, int h,
                         uint32_t timeout_ms)
@@ -440,6 +449,7 @@ bool epd_partial_update(const uint8_t *area, int x, int y, int w, int h,
     /* 恢复时钟；否则 0x44/0x45 窗口命令可能不生效，导致整屏刷新。 */
     if (!epd_clock_on()) return false;
     epd_cmd_byte(0x22, 0xC7);
+    epd_set_full_scan();
     epd_cmd_byte(0x11, 0x03);
     epd_set_ram_window(x, y, w, h);
     epd_cmd_data(0x24, area, (size_t)(w / 8) * h);
@@ -538,11 +548,46 @@ bool epd_partial_show_full(const uint8_t *fb, uint32_t timeout_ms)
     if (fb == NULL) return false;
     if (!epd_clock_on()) return false;
     epd_cmd_byte(0x22, 0xC7);
+    epd_set_full_scan();
     epd_cmd_byte(0x11, 0x03);
     epd_set_ram_window(0, 0, EPD_WIDTH, EPD_HEIGHT);
     epd_cmd_data(0x24, fb, EPD_FRAME_BYTES);
     epd_cmd(0x20);
     return epd_wait_busy(timeout_ms);
+}
+
+/* 带状局刷：MUX + gate start 限制扫描到 [y0..y1]，写整条 400px 宽。
+ * 整宽数据让未变化像素走 WW/BB 不驱动，避免横带闪烁。 */
+bool epd_band_update(const uint8_t *frame, int y0, int y1,
+                     uint32_t timeout_ms)
+{
+    if (frame == NULL) return false;
+    if (y0 < 0 || y1 >= EPD_HEIGHT || y1 <= y0) return false;
+
+    int h = y1 - y0 + 1;
+    for (int row = 0; row < h; row++) {
+        memcpy(&g_part_tmp[row * EPD_BYTES_PER_ROW],
+               &frame[(y0 + row) * EPD_BYTES_PER_ROW],
+               EPD_BYTES_PER_ROW);
+    }
+
+    if (!epd_clock_on()) return false;
+    epd_cmd_byte(0x22, 0xC7);
+
+    uint8_t mux[3] = { (uint8_t)((h - 1) & 0xFF),
+                       (uint8_t)(((h - 1) >> 8) & 0xFF), 0x00 };
+    epd_cmd_data(0x01, mux, 3);
+    uint8_t gs[2] = { (uint8_t)(y0 & 0xFF), (uint8_t)((y0 >> 8) & 0xFF) };
+    epd_cmd_data(0x0F, gs, 2);
+
+    epd_cmd_byte(0x11, 0x03);
+    epd_set_ram_window(0, y0, EPD_WIDTH, h);
+    epd_cmd_data(0x24, g_part_tmp, (size_t)EPD_BYTES_PER_ROW * h);
+    epd_cmd(0x20);
+    if (!epd_wait_busy(timeout_ms)) return false;
+
+    /* 下一次整帧/带状刷新会自行设置 MUX，不再额外做 0x80+0x20 */
+    return true;
 }
 
 void epd_fill(uint8_t color)

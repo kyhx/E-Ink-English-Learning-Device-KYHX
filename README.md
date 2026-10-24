@@ -21,12 +21,13 @@
 | 编译 | ESP-IDF v6.1 + xtensa-esp-elf，零 error |
 | 面板初始化 / 全白 / 全黑 / 文字 | 正常 |
 | OTP 全刷 | 4–6 s，全屏闪 |
-| **partial LUT 全帧快速刷新** | **约 740 ms/次，无可见闪** |
+| **70 行带状真局刷** | **约 346 ms/次；带状外不动、横带不闪，只有文字变化** |
 | 清洁周期（全白→全黑→底图） | 3 × 709 ms，可完全恢复残影 |
-| 上电演示 | 50 个单词，每词 740 ms 刷新 + 1 s 停留，第 25 词清洁一次，结束显示 DONE 并深睡 |
+| 上电演示 | 50 个单词，每词 346 ms 带状刷新 + 1 s 停留，第 25 词清洁一次，结束显示 DONE 并深睡 |
 
-> ⚠️ 严格来说当前是 **400×300 全帧 transition-only 快速刷新**（只驱动发生翻转的像素），
-> 不是“窗口外完全不扫描”的窗口级真局刷。详见 [`docs/局刷测试记录.md`](docs/局刷测试记录.md)。
+> **当前方案：MUX=69 + gate start=95，只扫描 95..164 共 70 行；带状内写整条 400px 宽的数据，未变化像素不驱动。**
+> 带状外完全不扫描、完全不动；横带不闪，只有单词/序号变化。
+> 它不是任意 2D 窗口：X 方向仍全宽，但整宽数据保证横带不闪。详见 [`docs/局刷测试记录.md`](docs/局刷测试记录.md)、[`docs/真局部研究.md`](docs/真局部研究.md)。
 
 ---
 
@@ -81,6 +82,7 @@ E-Ink-English-Learning-Device-KYHX/
 │   ├── 交接文档.md                 # 现状 / 踩坑 / 下一步（新人先读这个）
 │   ├── 技术方案.md                 # 驱动方案与寄存器时序细节
 │   ├── 局刷测试记录.md             # 全部刷新实验数据与波形分析
+│   ├── 真局部研究.md               # 70 行带状真局刷的边界与 datasheet 依据
 │   ├── HINK-E042A13-A0资料汇总.md  # 屏体资料汇总
 │   ├── wiring.png / demo_preview.png / font_preview.png
 │   └── datasheets/                 # SSD1619A、GDEH042Z96 规格书
@@ -150,6 +152,7 @@ bool epd_partial_init(const uint8_t *lut);   // 硬件复位 + partial 初始化
 bool epd_partial_update(const uint8_t *area, int x, int y, int w, int h, uint32_t timeout_ms);
 bool epd_partial_show_full(const uint8_t *fb, uint32_t timeout_ms);
 bool epd_partial_reload_lut(const uint8_t *lut);  // 清洁周期后重载 LUT
+bool epd_band_update(const uint8_t *frame, int y0, int y1, uint32_t timeout_ms); // 70 行带状局刷
 bool epd_epd_dis_part(...);                  // 对照实验接口，当前未使用
 ```
 
@@ -184,7 +187,8 @@ void app_main(void) {
 | --- | --- | --- |
 | 初始化 | `0x22 = 0xB1` → `0x20` | 从 OTP 载入温度与波形 |
 | 全刷 | `0x24` 写帧 → `0x22 = 0xC7` → `0x20` | 4–6 s，全屏闪 |
-| 快速刷新 | `0x22 = 0x80`+`0x20` 开时钟 → `0x32` + 70B LUT → 设窗口 → `0x24` 写帧 → `0x20` → 再写一遍基线 | 约 740 ms，无可见闪 |
+| 70 行带状局刷 | `0x01` MUX=69 → `0x0F` gate start=95 → `0x45` Y=95..164 → `0x44` X=0..399 → `0x24` 写 400×70 → `0x20` | 约 346 ms，带状外不动、横带不闪 |
+| 全帧快速刷新 | `0x22 = 0x80`+`0x20` 开时钟 → `0x32` + 70B LUT → 设窗口 → `0x24` 写整帧 → `0x20` → 再写一遍基线 | 约 740 ms，无可见闪（备用） |
 
 几个高频坑（完整表见 [`docs/交接文档.md`](docs/交接文档.md)、[`docs/技术方案.md`](docs/技术方案.md)）：
 

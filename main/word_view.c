@@ -12,7 +12,7 @@
 #include "epd_ssd1619a.h"
 #include "word_view.h"
 
-/* 单词区：最终用 400x300 全帧 transition-only 刷新 */
+/* 单词区：最终用 MUX + gate start 的 70 行带状局刷（y=95..164） */
 #define AREA_X   40
 #define AREA_Y   90
 #define AREA_W   320
