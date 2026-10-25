@@ -56,3 +56,8 @@ yarn.lock
 
 # 本地环境
 *.local
+.venv-train/
+.venv/
+__pycache__/
+.pytest_cache/
+.ipynb_checkpoints/

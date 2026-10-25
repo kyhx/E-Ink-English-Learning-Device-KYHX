@@ -1,4 +1,7 @@
-﻿# Name,   Type, SubType, Offset,  Size
-nvs,      data, nvs,     0x9000,  0x5000
-phy_init, data, phy,     0xe000,  0x1000
-factory,  app,  factory, 0x10000, 3M
+# Name,   Type, SubType, Offset,   Size
+# 16 MB flash. Keep factory at 3 MB (current app ~230 KB) and give the
+# word bank / audio pack / records / collection WAVs a 10 MB LittleFS area.
+nvs,      data, nvs,      0x9000,   0x6000
+phy_init, data, phy,      0xF000,   0x1000
+factory,  app,  factory,  0x10000,  3M
+storage,  data, littlefs, 0x310000, 10M

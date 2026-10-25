@@ -1,7 +1,9 @@
 # E-Ink 英语学习机（ESP32-S3 + 4.2" 墨水屏）
 
-基于 **ESP32-S3-N16R8 + 墨水屏驱动板 V1.5 + 4.2 寸单色电子墨水屏（SSD1619A，400×300）** 的
-电子墨水屏英语单词学习终端固件，使用 **ESP-IDF v6.1 / C** 开发。
+基于 **YD-ESP32-S3 / ESP32-S3-N16R8 + 墨水屏驱动板 V1.5 + 4.2 寸单色电子墨水屏（SSD1619A，400×300）** 的
+电子墨水屏英语单词学习终端固件，使用 **ESP-IDF v6.1 / C** 开发。开发板为双 Type-C
+（COM=CH343P 串口，USB=原生），板载 16 MB Flash / 8 MB Octal PSRAM；完整引脚见
+[`docs/board_pinmap.md`](docs/board_pinmap.md)。
 
 纸质单词书内容固定、检索不便，难以按遗忘规律安排复习，携带与翻阅成本较高；手机背单词 App
 虽然检索与调度能力强，但依赖高亮背光屏幕，长时间近距离使用易造成视觉疲劳，且功能高度依赖
@@ -24,14 +26,47 @@
 | **70 行带状真局刷** | **约 346 ms/次；带状外不动、横带不闪，只有文字变化** |
 | 清洁周期（全白→全黑→底图） | 3 × 709 ms，可完全恢复残影 |
 | 上电演示 | 50 个单词，每词 346 ms 带状刷新 + 1 s 停留，第 25 词清洁一次，结束显示 DONE 并深睡 |
+| **M0 分区 / LittleFS** | **10 MB `storage` 分区，首次自动格式化；64 KB 读写校验通过** |
+| **M0 5 键驱动** | **GPIO 1/4/5/6/13，20 ms 消抖 + 800 ms 长按；初始化通过** |
+| **M0 bench 控制台** | **UART0 115200，`bench info/fs/display/keys/selftest`** |
+| **M0 局部刷新扩展** | **y=35/95/170/230 均可带状刷新；40 行带约 298 ms，70 行 346 ms** |
 
 > **当前方案：MUX=69 + gate start=95，只扫描 95..164 共 70 行；带状内写整条 400px 宽的数据，未变化像素不驱动。**
 > 带状外完全不扫描、完全不动；横带不闪，只有单词/序号变化。
 > 它不是任意 2D 窗口：X 方向仍全宽，但整宽数据保证横带不闪。详见 [`docs/局刷测试记录.md`](docs/局刷测试记录.md)、[`docs/真局部研究.md`](docs/真局部研究.md)。
 
+### 1.1 M0 已完成（2026-10-25）
+
+- 新分区表：`nvs(24 KB) / phy / factory(3 MB) / storage(10 MB LittleFS)`；首次挂载自动格式化，`bench fs` 64 KB 写入 135–530 ms、读 17–18 ms、校验 OK。
+- 5 键驱动：`PREV=4 / NEXT=5 / PLAY=6 / RECORD=13 / SYNC=1`，20 ms 消抖、短按释放触发、800 ms 长按按住触发、16 条事件队列。
+- UART0 `bench` 控制台：`info / fs / display band <y0> <h> <n> / display full / display clean / keys [s] / selftest`。
+- 默认启动 M0 home 页；旧 50 词演示保留，`CONFIG_APP_MODE_DEMO=y` 可回归。
+- 实测：y=35/95/170 的 70 行带均 346 ms；170/40、230/40 约 298 ms；整屏 709 ms；清洁 3×709 ms + LUT reload。详见 [`docs/M0测试记录.md`](docs/M0测试记录.md)。
+
+> 5 键的物理按下/长按事件还需人工按键确认：运行 `bench keys 5` 后依次按 5 个键即可。
+
 ---
 
 ## 2. 硬件与接线
+
+### 2.1 开发板
+
+本项目使用 **YD-ESP32-S3 / ESP32-S3-N16R8**（ESP32-S3-WROOM-1，16 MB Flash / 8 MB Octal PSRAM，双 Type-C）：
+
+| 项 | 说明 |
+| --- | --- |
+| USB-C "COM" | CH343P USB-UART，烧录/串口监视用这个口（COM4，115200） |
+| USB-C "USB" | ESP32-S3 原生 USB（GPIO19/20）；USB-OTG 需桥接焊盘 |
+| RGB LED | WS2812，GPIO48，需桥接 `RGB` 焊盘才受控 |
+| BOOT / RST | GPIO0 / EN |
+| 供电 | USB-C，或 5V/G、3V3/G 排针；LDO 5V→3.3V 1A |
+| 保留引脚 | GPIO35/36/37（Flash/PSRAM）、19/20（USB）、43/44（UART0）、48（RGB） |
+
+完整 P1/P2 排针表、strapping/ADC 注意事项见 [`docs/board_pinmap.md`](docs/board_pinmap.md)。
+
+> 本板 **GPIO13/14 在 P1 的 19/20 脚引出**，所以当前 `RECORD=13`、`MIC BCLK=14` 不需要改线；GPIO13/14 属 ADC2，只做数字 I/O。
+
+### 2.2 墨水屏驱动板
 
 驱动板 V1.5 丝印：`GND / 3V3 / SCK / SDA / RST / DC / CS1 / BUSY / CS2`（CS2 仅三色屏使用）。
 
@@ -63,13 +98,22 @@ E-Ink-English-Learning-Device-KYHX/
 ├── CMakeLists.txt                  # 工程顶层
 ├── sdkconfig.defaults              # esp32s3 / 16MB Flash / 8MB Octal PSRAM / 自定义分区
 ├── sdkconfig                       # 实测通过的完整配置（CPU 240MHz、FreeRTOS 1000Hz）
-├── partitions.csv                  # nvs / phy_init / factory(3MB)
+├── partitions.csv                  # nvs / phy_init / factory(3MB) / storage(10MB littlefs)
+├── main/idf_component.yml          # 托管组件：littlefs / TFLM / esp-dsp
 ├── .clangd                         # clangd 过滤 -f* -m*
 ├── main/
 │   ├── CMakeLists.txt
-│   ├── main.c                      # app_main：初始化 / 清洁周期 / 单词循环 / 深睡
-│   ├── word_view.c                 # 单词卡片布局与帧合成（纯内存绘制）
-│   └── word_view.h
+│   ├── main.c                      # app_main：NVS/EPD/LittleFS/按键/bench 初始化
+│   ├── Kconfig.projbuild           # APP_MODE_DEMO / APP_BENCH
+│   ├── app_state.c/.h              # M0 home 页 + 按键事件循环
+│   ├── word_view.c/.h              # 旧 50 词演示布局（demo 模式）
+│   ├── board/
+│   │   ├── board_pins.h            # 引脚唯一来源
+│   │   └── buttons.c/.h            # 5 键消抖/长按
+│   ├── services/
+│   │   └── storage.c/.h            # LittleFS 挂载 + 64 KB 自检
+│   └── bench/
+│       └── bench.c/.h              # UART0 bench 控制台
 ├── components/
 │   └── epd_ssd1619a/               # 墨水屏驱动组件
 │       ├── CMakeLists.txt
@@ -84,12 +128,18 @@ E-Ink-English-Learning-Device-KYHX/
 │   ├── 局刷测试记录.md             # 全部刷新实验数据与波形分析
 │   ├── 真局部研究.md               # 70 行带状真局刷的边界与 datasheet 依据
 │   ├── HINK-E042A13-A0资料汇总.md  # 屏体资料汇总
+│   ├── M0测试记录.md               # 分区/按键/bench/E0 实测
+│   ├── board_pinmap.md             # YD-ESP32-S3 P1/P2 引脚与接线
+│   ├── toolchain.md                # Python/IDF/转换链/字体/串口
 │   ├── wiring.png / demo_preview.png / font_preview.png
 │   └── datasheets/                 # SSD1619A、GDEH042Z96 规格书
 └── tools/
     ├── png_to_raw.py               # PNG → 15000 字节 1bpp 帧
     ├── preview_demo.py             # 离线渲染屏显效果（无需硬件）
     ├── gen_font.py / font5x7_ascii.py / gen_wiring.py
+    ├── setup/                      # 训练环境安装 + 全量验证
+    ├── train/                      # requirements + onnx→tflite 冒烟
+    └── fonts/check_fonts.py        # IPA/中文字形覆盖检查
 ```
 
 ---
@@ -122,6 +172,32 @@ idf.py -p COM4 flash monitor
 | `idf.py monitor` | 串口监视 |
 | `idf.py fullclean` | 彻底清理 |
 
+默认启动 **M0 home 页 + UART0 bench 控制台**。旧 50 词演示通过 menuconfig 打开：
+
+```text
+idf.py menuconfig
+  → E-Ink English Learning Device
+      [ ] Run the legacy 50-word display demo at boot
+```
+
+烧录后在串口输入：
+
+```text
+bench info
+bench fs
+bench display band 95 70 3
+bench display full
+bench display clean
+bench keys 5
+bench selftest
+```
+
+训练 / 模型转换工具链见 [`docs/toolchain.md`](docs/toolchain.md)：
+`pwsh -File tools/setup/install-train.ps1`，然后
+`.\.venv-train\Scripts\python.exe tools\train\smoke_convert.py`。
+
+> 本次分区表新增了 10 MB `storage`；首次启动 LittleFS 会自动格式化。若之前烧过旧分区表且挂载异常，执行一次 `idf.py erase-flash` 再烧录。
+>
 > API 依赖名：ESP-IDF **v5.3+ / v6.x** 用 `esp_driver_gpio` / `esp_driver_spi`；
 > **v5.0–5.2** 需把 `main/CMakeLists.txt` 与 `components/epd_ssd1619a/CMakeLists.txt`
 > 里的依赖改回 `driver`。
@@ -210,15 +286,19 @@ void app_main(void) {
 ① 整个项目按 AGPL-3.0 发布；② 取得作者授权；③ 依据 datasheet 独立重写 partial LUT 与序列。
 仅本地实验/论文使用时，请在文中注明来源与许可证。
 
+完整第三方清单见 [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)（含字体、托管组件、PC 工具链与数据集说明）。
+
 ---
 
 ## 9. 下一步
 
 1. 处理上面的 AGPL 许可证问题（发布前必做）；
-2. 演示改为 **按键翻词 + 按需刷新**，去掉连续 50 词；
-3. 停留/空闲用 light sleep 或 tickless idle，CPU 240 → 160/80 MHz；
-4. 清洁周期改自适应（每 20–30 次刷新，或残影明显时）；
-5. 补功耗与残影实测（INA226 / PPK2），接入真实词库与复习调度（Leitner）；
-6. 评估 SPI 4 → 10 MHz（缩短 15000 字节写入时间）。
+2. **M1**：接入 100 词词库/音频/字库，把 M0 home 页换成页面管理器 + 单词卡；
+3. **M1**：Leitner 分级复习 + 学习记录（LittleFS 环形）；
+4. 停留/空闲用 light sleep 或 tickless idle，CPU 240 → 160/80 MHz；
+5. 清洁周期改自适应（每 20–30 次刷新，或残影明显时）；
+6. 补功耗与残影实测（INA219 / PPK2 或 USB 电流表）；
+7. 人工确认 5 键短按/长按（`bench keys 5`），并补到 `docs/M0测试记录.md`；
+8. 评估 SPI 4 → 10 MHz（缩短 15000 字节写入时间）。
 
 详细交接与风险清单见 [`docs/交接文档.md`](docs/交接文档.md)。

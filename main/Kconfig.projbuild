@@ -1,0 +1,18 @@
+menu "E-Ink English Learning Device"
+
+    config APP_MODE_DEMO
+        bool "Run the legacy 50-word display demo at boot"
+        default n
+        help
+            Boot straight into the old 50-word / 346 ms band-refresh demo.
+            Useful as a display regression test.  When disabled, the M0
+            home screen + bench console is started instead.
+
+    config APP_BENCH
+        bool "Enable the UART0 bench console"
+        default y
+        help
+            Register the `bench` command on UART0 (115200 8N1).  Disable for
+            a production build that should not expose bring-up commands.
+
+endmenu

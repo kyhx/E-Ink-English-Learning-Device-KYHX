@@ -1,20 +1,17 @@
 /*
- * E-Ink 英语学习机 —— 应用入口
+ * E-Ink 英语学习机 —— 应用入口（M0）
  *
  * 硬件：ESP32-S3-N16R8 + 驱动板 V1.5 + 4.2" 单色墨水屏（SSD1619A，400x300）
- * 刷新：70 字节 partial LUT + MUX/gate start，70 行横向带状真局刷，约 346 ms/次
  *
- * 当前行为（复刻已验证的 50 词演示，用于硬件回归验证）：
- *   1. epd_init() 建立 SPI/GPIO 并做 OTP 全刷初始化
- *   2. epd_partial_init() 硬件复位 + partial 初始化 + 加载 LUT
- *   3. 开机清洁（全白 -> 全黑 -> 底图）
- *   4. 50 个单词，每词约 346 ms 带状刷新 + 1 s 停留
- *   5. 第 25 词后清洁一次，跑完显示 DONE 并深睡
+ * M0 启动流程：
+ *   1. NVS + EPD 初始化（partial LUT）
+ *   2. LittleFS 挂载 10 MB storage 分区（首次自动格式化）
+ *   3. 5 键驱动 + UART0 bench 控制台
+ *   4. CONFIG_APP_MODE_DEMO=y 时跑旧 50 词演示；否则进入 M0 home 页
  *
- * 下一步（见 docs/交接文档.md 第 7 节）：
- *   - 改成按键翻词 + 按需刷新
- *   - 停留时间用 light sleep / tickless idle 替代 240 MHz 空转
- *   - 按 20~30 次刷新做自适应清洁
+ * bench 命令：
+ *   bench info / fs / display band <y0> <h> <n> / display full /
+ *   display clean / keys [s] / selftest
  *
  * SPDX-License-Identifier: MIT
  */
@@ -23,21 +20,46 @@
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+
 #include "esp_log.h"
 #include "esp_timer.h"
+#include "nvs_flash.h"
+#include "sdkconfig.h"
 
-#include "epd_ssd1619a.h"
 #include "epd_lut_partial.h"
+#include "epd_ssd1619a.h"
+
+#include "app_state.h"
+#include "bench.h"
+#include "board/buttons.h"
+#include "services/storage.h"
+
+static const char *TAG = "main";
+
+#define EPD_TIMEOUT_MS 5000
+
+/* --------------------------------------------------------------- NVS */
+static esp_err_t nvs_init(void)
+{
+    esp_err_t err = nvs_flash_init();
+    if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+        ESP_LOGW(TAG, "NVS needs erase (%s), re-initializing", esp_err_to_name(err));
+        ESP_ERROR_CHECK(nvs_flash_erase());
+        err = nvs_flash_init();
+    }
+    return err;
+}
+
+/* ------------------------------------------------------- legacy demo */
+#if CONFIG_APP_MODE_DEMO
+
 #include "word_view.h"
 
-static const char *TAG = "words";
+#define WORD_DWELL_MS  1000
+#define CLEAN_EVERY_N  25
 
-#define WORD_DWELL_MS      1000    /* 每词停留 */
-#define CLEAN_EVERY_N      25      /* 每 N 次刷新做一次清洁周期 */
-#define EPD_TIMEOUT_MS     5000    /* 单次刷新等待 BUSY 的超时 */
-
-static uint8_t s_base[EPD_FRAME_BYTES];   /* 底图，只画一次 */
-static uint8_t s_frame[EPD_FRAME_BYTES];  /* 当前待显示的完整帧 */
+static uint8_t s_base[EPD_FRAME_BYTES];
+static uint8_t s_frame[EPD_FRAME_BYTES];
 
 /* 全白 -> 全黑 -> 底图，恢复残影，并重新加载 partial LUT */
 static void clean_cycle(const char *tag)
@@ -78,17 +100,9 @@ static bool show_word(int idx)
     return ok;
 }
 
-void app_main(void)
+static void demo_run(void)
 {
-    ESP_LOGI(TAG, "start, %d words", word_view_count());
-
-    const epd_config_t cfg = EPD_S3_DEFAULT_CONFIG();
-    epd_init(&cfg);
-
-    if (!epd_partial_init(epd_lut_partial_70)) {
-        ESP_LOGE(TAG, "partial init failed");
-        return;
-    }
+    ESP_LOGI(TAG, "demo mode: %d words", word_view_count());
 
     /* 清掉上一轮残留，再开始 */
     clean_cycle("START");
@@ -111,6 +125,51 @@ void app_main(void)
     word_view_banner(s_frame, "DONE");
     epd_partial_show_full(s_frame, EPD_TIMEOUT_MS);
 
-    ESP_LOGI(TAG, "done");
+    ESP_LOGI(TAG, "demo done");
     epd_deep_sleep();
+}
+
+#endif /* CONFIG_APP_MODE_DEMO */
+
+/* ------------------------------------------------------------- entry */
+void app_main(void)
+{
+    ESP_LOGI(TAG, "boot: M0 skeleton");
+
+    esp_err_t err = nvs_init();
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "nvs init failed: %s", esp_err_to_name(err));
+    }
+
+    const epd_config_t cfg = EPD_S3_DEFAULT_CONFIG();
+    epd_init(&cfg);
+
+    if (!epd_partial_init(epd_lut_partial_70)) {
+        ESP_LOGE(TAG, "partial init failed; display unavailable");
+        return;
+    }
+
+    err = storage_init();
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "storage init failed: %s (bench fs will fail)",
+                 esp_err_to_name(err));
+    }
+
+    err = buttons_init();
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "buttons init failed: %s", esp_err_to_name(err));
+    }
+
+#if CONFIG_APP_BENCH
+    err = bench_init();
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "bench init failed: %s", esp_err_to_name(err));
+    }
+#endif
+
+#if CONFIG_APP_MODE_DEMO
+    demo_run();
+#else
+    app_state_run();  /* does not return */
+#endif
 }

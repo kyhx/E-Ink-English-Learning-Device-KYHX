@@ -1,0 +1,16 @@
+# Core training / dataset / evaluation dependencies (Python 3.12)
+numpy
+scipy
+pandas
+scikit-learn
+matplotlib
+librosa
+soundfile
+PyYAML
+tqdm
+pytest
+Pillow
+fonttools
+pyserial
+onnx
+onnxruntime
