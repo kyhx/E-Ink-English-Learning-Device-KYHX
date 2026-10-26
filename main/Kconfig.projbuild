@@ -15,4 +15,45 @@ menu "E-Ink English Learning Device"
             Register the `bench` command on UART0 (115200 8N1).  Disable for
             a production build that should not expose bring-up commands.
 
+    config APP_AUDIO_RECORD_MS
+        int "Default recording length (ms)"
+        default 2000
+        range 200 5000
+        help
+            Length of one M2 follow-along recording.  The training pipeline
+            expects 2.0 s; 2000 ms is the default.
+
+    config APP_AUDIO_MIC_GAIN_X100
+        int "Microphone digital gain x100"
+        default 100
+        range 50 400
+        help
+            100 = unity.  MS4030/INMP441 full scale is roughly 120 dB SPL;
+            raise this only if the recorded level is too low and clipping is
+            not already present.
+
+    config APP_AUDIO_MIC_POWER_GPIO
+        int "MS4030 power-gate GPIO (-1 = no gate)"
+        default 38
+        range -1 48
+        help
+            GPIO38 drives an optional MOS/load switch on the MS4030 VDD rail.
+            Set to -1 if the microphone is powered directly from 3.3 V.  The
+            gate is raised 10 ms before capture and lowered afterwards.
+
+    config APP_AUDIO_AMP_SD_ACTIVE_HIGH
+        bool "MAX98357A SD is active high"
+        default y
+        help
+            The MAX98357A shutdown/enable pin is active high on this board.
+            Keep enabled unless the hardware is changed.
+
+    config APP_AUDIO_TONE_AMPLITUDE
+        int "Test-tone amplitude (0..32767)"
+        default 6000
+        range 1000 20000
+        help
+            Amplitude used by `bench audio tone` / `bench audio gen`.
+            6000 is about -15 dBFS, loud enough to hear but not painful.
+
 endmenu

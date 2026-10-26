@@ -10,6 +10,9 @@
  *   bench display full
  *   bench display clean
  *   bench keys [seconds]
+ *   bench audio info|rec [ms] [play]|play [file]|tone [ms]
+ *               gen [ms]|dump [file]|list|analyze [file]
+ *               soak [n]|selftest
  *   bench selftest
  *
  * SPDX-License-Identifier: MIT

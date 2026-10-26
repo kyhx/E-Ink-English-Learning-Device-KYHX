@@ -74,7 +74,7 @@
 | 7 | GPIO41 | 空闲；JTAG MTDI |
 | 8 | GPIO40 | **I2C SCL**（INA219） |
 | 9 | GPIO39 | **I2C SDA**（INA219） |
-| 10 | GPIO38 | 空闲；可作 MIC BCLK 的备选 |
+| 10 | GPIO38 | **MIC_PWR**（可选 MOS/负载开关门控；`CONFIG_APP_AUDIO_MIC_POWER_GPIO`） |
 | 11 | GPIO37 | **保留**：Flash/PSRAM |
 | 12 | GPIO36 | **保留**：Flash/PSRAM |
 | 13 | GPIO35 | **保留**：Flash/PSRAM |
@@ -113,6 +113,7 @@
 | MIC BCLK | 14 | P1-20 | I2S0；ADC2 仅数字 |
 | MIC WS | 15 | P1-8 | I2S0 |
 | MIC SD | 16 | P1-9 | I2S0；MS4030（INMP441 兼容）L/R=GND |
+| MIC PWR | 38 | P2-10 | 可选：MOS/负载开关门控；未接时 Kconfig 设 -1 |
 | AMP BCLK | 17 | P1-10 | I2S1 |
 | AMP LRC | 18 | P1-11 | I2S1 |
 | AMP DIN | 21 | P2-18 | I2S1 |
@@ -126,8 +127,9 @@
 
 ## 5. 供电与接线注意
 
-- **麦克风**：MS4030（INMP441 兼容），**3.3 V** 供电；L/R 接 GND 选左声道，BCLK=14 / WS=15 / SD=16。
+- **麦克风**：MS4030（INMP441 兼容），**3.3 V** 供电；L/R 接 GND 选左声道，BCLK=14 / WS=15 / SD=16。若要满足深睡电流，VDD 串 MOS/负载开关，栅极接 GPIO38（M2 固件已支持，默认 38；未接 MOS 时把 `CONFIG_APP_AUDIO_MIC_POWER_GPIO` 设为 -1）。
 - **功放/喇叭**：MAX98357A + **3 W 喇叭**，功放用 **5 V** 供电；SD=47 **高电平使能**。喇叭是差分输出，任一端都不能再接 GND。
+  - **2026-10-26 实测**：I2S1 写入正常，但声学测试检测不到 1 kHz；优先查 5 V（COM 口供电时 5V 排针默认输入，需桥接 `IN-OUT`）和喇叭差分接线。详见 [`M2测试记录.md`](M2测试记录.md)。
 - **烧录/串口**：用 "COM" Type-C 口（CH343P），`idf.py -p COM4 flash monitor`。
 - **原生 USB**："USB" 口是 GPIO19/20；如果要用 USB-OTG/JTAG，需要桥接板背面的 `USB-OTG` 焊盘。本项目暂不需要。
 - **5V 排针**：默认是输入；如果要用 COM 口供电同时在 5V 排针输出，需要桥接 `IN-OUT` 焊盘。

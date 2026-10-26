@@ -5,6 +5,7 @@ tools/
 ├── setup/       # Python/IDF/转换链安装与验证
 ├── train/       # requirements、ONNX→TFLite 冒烟、玩具训练
 ├── pipeline/    # 采集/标注 + 训练/量化/部署 + GUI
+├── audio/       # M2 串口音频验收 + WAV 下载
 ├── reference/   # Oxford 参考发音下载
 ├── fonts/       # IPA/中文字形覆盖检查
 └── *.py         # 旧版图片/字库/接线辅助脚本
@@ -23,6 +24,8 @@ tools/
 | 采集检查 | `.\.venv-train\Scripts\python.exe tools\pipeline\check_collected.py --data-dir data\collected\v1.0` |
 | CNN 可视化 | `.\.venv-train\Scripts\python.exe tools\pipeline\visualize_cnn.py --wav ... --out ...` |
 | Oxford 参考音 | `.\.venv-train\Scripts\python.exe tools\reference\fetch_oxford_audio.py --words-file data\words.csv` |
+| M2 音频验收 | `.\.venv-train\Scripts\python.exe tools\audio\bench_audio.py --port COM4 info` |
+| 20 条录音 | `.\.venv-train\Scripts\python.exe tools\audio\bench_audio.py --port COM4 soak --n 20` |
 | 字库覆盖 | `.\.venv-train\Scripts\python.exe tools\fonts\check_fonts.py` |
 
 ## pipeline/
@@ -38,6 +41,11 @@ tools/
 - `visualize_cnn.py`：特征图 + Grad-CAM
 
 详细用法：[`pipeline/README.md`](pipeline/README.md)。
+
+## audio/
+
+- `bench_audio.py`：串口 `bench audio ...` 封装，支持 20 条 soak、录音下载 WAV、声学回环。
+- 详细说明：[`audio/README.md`](audio/README.md)。
 
 ## 旧版脚本
 

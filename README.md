@@ -32,12 +32,25 @@
 | **M0 5 键驱动** | **GPIO 1/4/5/6/13，20 ms 消抖 + 800 ms 长按；初始化通过** |
 | **M0 bench 控制台** | **UART0 115200，`bench info/fs/display/keys/selftest`** |
 | **M0 局部刷新扩展** | **y=35/95/170/230 均可带状刷新；40 行带约 298 ms，70 行 346 ms** |
+| **M2 音频采集** | **MS4030 / I2S0，16 kHz 单声道，2 s 32,000 帧，无削顶** |
+| **M2 WAV / VAD** | **WAV 写入 LittleFS；VAD 去首尾静音；安静房间正确判“无语音”** |
+| **M2 连续录音** | **20/20 文件完整；PC 可通过 `bench audio dump` 下载 WAV** |
+| **M2 回放** | **I2S1 写入正常；功放/喇叭未出声，链路待排查** |
 
 > **当前方案：MUX=69 + gate start=95，只扫描 95..164 共 70 行；带状内写整条 400px 宽的数据，未变化像素不驱动。**
 > 带状外完全不扫描、完全不动；横带不闪，只有单词/序号变化。
 > 它不是任意 2D 窗口：X 方向仍全宽，但整宽数据保证横带不闪。详见 [`docs/局刷测试记录.md`](docs/局刷测试记录.md)、[`docs/真局部研究.md`](docs/真局部研究.md)。
 
-### 1.1 M0 已完成（2026-10-25）
+### 1.1 M2 音频链（2026-10-26）
+
+- 新增 `audio_in / audio_out / audio_wav / audio_vad / audio_analysis`；I2S0 麦克风、I2S1 功放、PSRAM 2 s 缓冲、WAV 44 B 头。
+- 采集任务独立于 UI，346 ms 带状刷新不会 overrun；上电先丢弃 100 ms 稳定期，再做 24→16 bit、增益、DC/削顶统计。
+- VAD：20 ms 帧/10 ms hop，噪声底 20 分位，首尾留 100 ms，<300 ms 判无语音；加 ZCR 门限避免把电源哼声当语音。
+- `bench audio info/rec/play/tone/gen/dump/list/analyze/soak/selftest`。
+- 实测：2 s 录音 32,000 帧、无削顶、首个可用样本 121 ms；20/20 连续文件完整；1 kHz 算法自检 1000 Hz/−17.8 dBFS。
+- **未通过**：声学测试检测不到 1 kHz，MAX98357A/喇叭未出声；详见 [`docs/M2测试记录.md`](docs/M2测试记录.md)。
+
+### 1.2 M0 已完成（2026-10-25）
 
 - 新分区表：`nvs(24 KB) / phy / factory(3 MB) / storage(10 MB LittleFS)`；首次挂载自动格式化，`bench fs` 64 KB 写入 135–530 ms、读 17–18 ms、校验 OK。
 - 5 键驱动：`PREV=4 / NEXT=5 / PLAY=6 / RECORD=13 / SYNC=1`，20 ms 消抖、短按释放触发、800 ms 长按按住触发、16 条事件队列。
@@ -95,11 +108,13 @@ Flash/PSRAM（26–37）与 UART0（43/44）。注意 GPIO11/12 属 ADC2，若�
 
 | 件 | 型号 | 接线 | 状态 |
 | --- | --- | --- | --- |
-| 麦克风 | **MS4030（INMP441 兼容）** | 3.3 V；BCLK=14 / WS=15 / SD=16；L/R=GND | 已分配，待接入实测 |
-| 功放 | **MAX98357A** | 5 V；BCLK=17 / LRC=18 / DIN=21 / SD=47（高=使能） | 已分配，待接入实测 |
-| 喇叭 | **3 W** | 接 MAX98357A 差分输出 +/− | 已分配，待接入实测 |
+| 麦克风 | **MS4030（INMP441 兼容）** | 3.3 V；BCLK=14 / WS=15 / SD=16；L/R=GND；可选 VDD 门控=38 | **已接通，录音正常** |
+| 功放 | **MAX98357A** | 5 V；BCLK=17 / LRC=18 / DIN=21 / SD=47（高=使能） | **I2S 写入正常，未出声** |
+| 喇叭 | **3 W** | 接 MAX98357A 差分输出 +/− | **待确认接线/供电** |
 
 > MAX98357A 的 `SD` 是**高电平使能**，不要按“空闲拉低”处理；喇叭任一端不能接 GND。3 W 是额定功率，阻抗以实物为准。
+>
+> 2026-10-26 的声学回环没有检测到 1 kHz；优先检查 5 V（COM 口供电时 5V 排针默认是输入，需桥接 `IN-OUT`）和喇叭差分接线。详见 [`docs/M2测试记录.md`](docs/M2测试记录.md)。
 
 ---
 
@@ -117,13 +132,19 @@ E-Ink-English-Learning-Device-KYHX/
 │   ├── CMakeLists.txt
 │   ├── main.c                      # app_main：NVS/EPD/LittleFS/按键/bench 初始化
 │   ├── Kconfig.projbuild           # APP_MODE_DEMO / APP_BENCH
-│   ├── app_state.c/.h              # M0 home 页 + 按键事件循环
+│   ├── app_state.c/.h              # M2 录音/回放页 + 按键事件循环
 │   ├── word_view.c/.h              # 旧 50 词演示布局（demo 模式）
 │   ├── board/
 │   │   ├── board_pins.h            # 引脚唯一来源
 │   │   └── buttons.c/.h            # 5 键消抖/长按
 │   ├── services/
-│   │   └── storage.c/.h            # LittleFS 挂载 + 64 KB 自检
+│   │   ├── storage.c/.h            # LittleFS 挂载 + 64 KB 自检
+│   │   ├── audio.c/.h              # M2 音频初始化
+│   │   ├── audio_in.c/.h           # I2S0 麦克风采集任务
+│   │   ├── audio_out.c/.h          # I2S1 功放播放
+│   │   ├── audio_wav.c/.h          # WAV 读写/文件名
+│   │   ├── audio_vad.c/.h          # 能量+ZCR VAD
+│   │   └── audio_analysis.c/.h     # 电平/1 kHz/SNR
 │   └── bench/
 │       └── bench.c/.h              # UART0 bench 控制台
 ├── components/
@@ -147,6 +168,7 @@ E-Ink-English-Learning-Device-KYHX/
 │   ├── 真局部研究.md               # 70 行带状真局刷的边界与 datasheet 依据
 │   ├── HINK-E042A13-A0资料汇总.md  # 屏体资料汇总
 │   ├── M0测试记录.md               # 分区/按键/bench/E0 实测
+│   ├── M2测试记录.md               # 录音/WAV/VAD/20 条/回环实测
 │   ├── board_pinmap.md             # YD-ESP32-S3 P1/P2 引脚与接线
 │   ├── data_collection.md          # 采集协议 / 600 条设计 / 标注口径
 │   ├── public_datasets.md          # 公开语料调研
@@ -162,6 +184,7 @@ E-Ink-English-Learning-Device-KYHX/
     ├── setup/                      # 训练环境安装 + 全量验证
     ├── train/                      # requirements + onnx→tflite 冒烟
     ├── pipeline/                   # 采集/标注 + 训练/量化/部署 + GUI
+    ├── audio/                       # M2 串口音频验收 + WAV 下载
     ├── reference/                  # Oxford 参考发音下载
     ├── fonts/check_fonts.py        # IPA/中文字形覆盖检查
     └── png_to_raw.py / preview_demo.py / gen_font.py 等旧脚本
@@ -197,7 +220,7 @@ idf.py -p COM4 flash monitor
 | `idf.py monitor` | 串口监视 |
 | `idf.py fullclean` | 彻底清理 |
 
-默认启动 **M0 home 页 + UART0 bench 控制台**。旧 50 词演示通过 menuconfig 打开：
+默认启动 **M2 录音页 + UART0 bench 控制台**。旧 50 词演示通过 menuconfig 打开：
 
 ```text
 idf.py menuconfig
@@ -214,6 +237,10 @@ bench display band 95 70 3
 bench display full
 bench display clean
 bench keys 5
+bench audio info
+bench audio rec 2000
+bench audio play
+bench audio soak 20
 bench selftest
 ```
 
@@ -350,12 +377,13 @@ void app_main(void) {
 ## 9. 下一步
 
 1. 处理上面的 AGPL 许可证问题（发布前必做）；
-2. **M1**：接入 100 词词库/音频/字库，把 M0 home 页换成页面管理器 + 单词卡；
-3. **M1**：Leitner 分级复习 + 学习记录（LittleFS 环形）；
-4. 停留/空闲用 light sleep 或 tickless idle，CPU 240 → 160/80 MHz；
-5. 清洁周期改自适应（每 20–30 次刷新，或残影明显时）；
-6. 补功耗与残影实测（INA219 / PPK2 或 USB 电流表）；
-7. 人工确认 5 键短按/长按（`bench keys 5`），并补到 `docs/M0测试记录.md`；
-8. 评估 SPI 4 → 10 MHz（缩短 15000 字节写入时间）。
+2. **M2 收尾**：确认 MAX98357A 5 V/喇叭差分接线，用手机 1 kHz + `bench audio rec/analyze` 确认出声后，真人录 20 条 2 s；
+3. **M1**：接入 100 词词库/音频/字库，把录音页换成页面管理器 + 单词卡；
+4. **M1**：Leitner 分级复习 + 学习记录（LittleFS 环形）；
+5. 停留/空闲用 light sleep 或 tickless idle，CPU 240 → 160/80 MHz；
+6. 清洁周期改自适应（每 20–30 次刷新，或残影明显时）；
+7. 补功耗与残影实测（INA219 / PPK2 或 USB 电流表）；
+8. 人工确认 5 键短按/长按（`bench keys 5`），并补到 `docs/M0测试记录.md`；
+9. 评估 SPI 4 → 10 MHz（缩短 15000 字节写入时间）。
 
 详细交接与风险清单见 [`docs/交接文档.md`](docs/交接文档.md)。

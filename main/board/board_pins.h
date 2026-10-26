@@ -60,6 +60,10 @@
 #define BOARD_MIC_BCLK_GPIO   GPIO_NUM_14
 #define BOARD_MIC_WS_GPIO     GPIO_NUM_15
 #define BOARD_MIC_SD_GPIO     GPIO_NUM_16
+/* Optional MOS/load-switch gate on the MS4030 3.3 V rail.  GPIO38 is a free
+ * P2 pin on the YD-ESP32-S3.  If the mic is wired directly to 3.3 V, set
+ * CONFIG_APP_AUDIO_MIC_POWER_GPIO=-1; toggling an unused pin is harmless. */
+#define BOARD_MIC_PWR_GPIO    GPIO_NUM_38
 #define BOARD_AMP_BCLK_GPIO   GPIO_NUM_17
 #define BOARD_AMP_LRC_GPIO    GPIO_NUM_18
 #define BOARD_AMP_DIN_GPIO    GPIO_NUM_21

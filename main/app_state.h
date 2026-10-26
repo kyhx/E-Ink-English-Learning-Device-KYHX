@@ -1,5 +1,5 @@
 /*
- * app_state.h — M0 application skeleton.
+ * app_state.h — M2 application skeleton (record/play UI).
  *
  * SPDX-License-Identifier: MIT
  */
@@ -10,7 +10,7 @@
 extern "C" {
 #endif
 
-/* Show the M0 home screen and run the key-event loop.  Does not return. */
+/* Show the M2 record/play screen and run the key-event loop.  Does not return. */
 void app_state_run(void);
 
 #ifdef __cplusplus

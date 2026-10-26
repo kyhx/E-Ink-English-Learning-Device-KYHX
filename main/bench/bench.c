@@ -8,11 +8,15 @@
  */
 #include "bench.h"
 
+#include <dirent.h>
+#include <inttypes.h>
+#include <math.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -24,13 +28,26 @@
 #include "esp_log.h"
 #include "esp_system.h"
 #include "esp_timer.h"
+#include "sdkconfig.h"
 
+#include "audio.h"
+#include "audio_analysis.h"
+#include "audio_common.h"
+#include "audio_in.h"
+#include "audio_out.h"
+#include "audio_vad.h"
+#include "audio_wav.h"
+#include "board_pins.h"
 #include "buttons.h"
 #include "epd_lut_partial.h"
 #include "epd_ssd1619a.h"
 #include "storage.h"
 
 static const char *TAG = "bench";
+
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
 
 /* --------------------------------------------------------------- helpers */
 
@@ -212,6 +229,417 @@ static int cmd_bench_selftest(void)
     return rc;
 }
 
+/* --------------------------------------------------------------- audio */
+
+static int cmd_bench_audio_info(void)
+{
+    printf("\n== bench audio info ==\n");
+    printf("format: %d Hz / %d-bit / mono, rec default=%d ms\n",
+           AUDIO_SAMPLE_RATE, AUDIO_BITS_PER_SAMPLE,
+           CONFIG_APP_AUDIO_RECORD_MS);
+    printf("mic:  I2S0 BCLK=%d WS=%d SD=%d pwr_gpio=%d gain=%d%%\n",
+           BOARD_MIC_BCLK_GPIO, BOARD_MIC_WS_GPIO, BOARD_MIC_SD_GPIO,
+           CONFIG_APP_AUDIO_MIC_POWER_GPIO, CONFIG_APP_AUDIO_MIC_GAIN_X100);
+#ifdef CONFIG_APP_AUDIO_AMP_SD_ACTIVE_HIGH
+    const char *amp_pol = "active high";
+#else
+    const char *amp_pol = "active low";
+#endif
+    printf("amp:  I2S1 BCLK=%d LRC=%d DIN=%d SD=%d (%s)\n",
+           BOARD_AMP_BCLK_GPIO, BOARD_AMP_LRC_GPIO, BOARD_AMP_DIN_GPIO,
+           BOARD_AMP_SD_GPIO, amp_pol);
+    printf("state: rec=%s play=%s busy=%s\n",
+           audio_in_is_active() ? "active" : "idle",
+           audio_out_is_playing() ? "playing" : "idle",
+           audio_busy() ? "yes" : "no");
+    printf("storage free: %u KB\n", (unsigned)(storage_free_bytes() / 1024));
+
+    char path[160];
+    if (audio_wav_latest(path, sizeof(path)) == ESP_OK) {
+        wav_info_t info;
+        if (audio_wav_info(path, &info) == ESP_OK) {
+            printf("latest: %s (%" PRIu32 " ms, %" PRIu32 " frames)\n",
+                   path, info.duration_ms, info.frames);
+        } else {
+            printf("latest: %s (unreadable)\n", path);
+        }
+    } else {
+        printf("latest: none\n");
+    }
+    return 0;
+}
+
+static int cmd_bench_audio_rec(int ms, bool play)
+{
+    if (ms < AUDIO_RECORD_MS_MIN || ms > AUDIO_RECORD_MS_MAX) {
+        printf("usage: bench audio rec [ms] [play]  (%d..%d)\n",
+               AUDIO_RECORD_MS_MIN, AUDIO_RECORD_MS_MAX);
+        return 1;
+    }
+    if (audio_busy()) {
+        printf("audio busy (recording or playing)\n");
+        return 1;
+    }
+
+    printf("\n== audio rec %d ms ==\n", ms);
+    esp_err_t err = audio_in_start((uint32_t)ms);
+    if (err != ESP_OK) {
+        printf("start failed: %s\n", esp_err_to_name(err));
+        return 1;
+    }
+
+    int64_t t0 = esp_timer_get_time();
+    int last_level = -1;
+    while (!audio_in_is_done()) {
+        int level = audio_in_level_permille();
+        if (level / 100 != last_level / 100) {
+            printf("  rec %4" PRIu32 " ms  level=%3d%%\n",
+                   audio_in_elapsed_ms(), level / 10);
+            last_level = level;
+        }
+        if ((esp_timer_get_time() - t0) / 1000 > (int64_t)ms + 3000) {
+            printf("  timeout waiting for capture task\n");
+            break;
+        }
+        vTaskDelay(pdMS_TO_TICKS(50));
+    }
+
+    int16_t *pcm = NULL;
+    size_t frames = 0;
+    audio_capture_stats_t st;
+    err = audio_in_stop(&pcm, &frames, &st);
+    if (err != ESP_OK) {
+        printf("stop failed: %s\n", esp_err_to_name(err));
+        return 1;
+    }
+
+    if (frames == 0) {
+        printf("no samples captured (mic not connected?)\n");
+        audio_in_free(pcm);
+        return 1;
+    }
+
+    audio_measure_t m;
+    audio_measure(pcm, frames, &m);
+    audio_vad_result_t vad;
+    audio_vad_analyze(pcm, frames, &vad);
+
+    char dur[16];
+    printf("captured: %u frames (%s), start=%" PRIu32 " ms\n",
+           (unsigned)frames, audio_wav_duration_str((uint32_t)frames, dur, sizeof(dur)),
+           st.start_latency_ms);
+    printf("level: peak=%u rms=%u dc=%d clip=%" PRIu32 " (%.2f%%)\n",
+           st.peak, st.rms, st.dc, st.clipped, m.clip_ratio * 100.0f);
+    printf("tone:  %.0f Hz, %.1f dBFS, SNR=%.1f dB\n",
+           m.tone_hz, m.tone_dbfs, m.tone_snr_db);
+    printf("vad:   speech=%s %" PRIu32 " ms, noise=%.1f dBFS, speech=%.1f dBFS, SNR=%.1f dB\n",
+           vad.has_speech ? "yes" : "NO", vad.speech_ms,
+           vad.noise_dbfs, vad.speech_dbfs, vad.snr_db);
+
+    char path[160];
+    err = audio_wav_make_rec_path(path, sizeof(path));
+    if (err == ESP_OK) {
+        err = audio_wav_write(path, pcm, frames);
+    }
+    if (err == ESP_OK) {
+        printf("saved: %s\n", path);
+    } else {
+        printf("save failed: %s\n", esp_err_to_name(err));
+    }
+
+    if (play && err == ESP_OK) {
+        printf("playback: %s\n", path);
+        esp_err_t perr = audio_out_play_wav(path);
+        printf("playback: %s\n", perr == ESP_OK ? "ok" : esp_err_to_name(perr));
+    }
+
+    audio_in_free(pcm);
+    return err == ESP_OK ? 0 : 1;
+}
+
+static int cmd_bench_audio_play(const char *path)
+{
+    char latest[160];
+    if (path == NULL) {
+        if (audio_wav_latest(latest, sizeof(latest)) != ESP_OK) {
+            printf("no recording found under %s\n", AUDIO_REC_DIR);
+            return 1;
+        }
+        path = latest;
+    }
+    wav_info_t info;
+    esp_err_t err = audio_wav_info(path, &info);
+    if (err != ESP_OK) {
+        printf("cannot read %s: %s\n", path, esp_err_to_name(err));
+        return 1;
+    }
+    printf("\nplay %s: %" PRIu32 " ms, %" PRIu32 " frames\n",
+           path, info.duration_ms, info.frames);
+    err = audio_out_play_wav(path);
+    printf("play: %s\n", err == ESP_OK ? "ok" : esp_err_to_name(err));
+    return err == ESP_OK ? 0 : 1;
+}
+
+static int cmd_bench_audio_tone(int ms)
+{
+    if (ms < 100 || ms > 5000) {
+        printf("usage: bench audio tone [ms]  (100..5000)\n");
+        return 1;
+    }
+    printf("\ntone: 1000 Hz %d ms, amplitude=%d\n", ms,
+           CONFIG_APP_AUDIO_TONE_AMPLITUDE);
+    esp_err_t err = audio_out_play_tone(1000, (uint32_t)ms,
+                                        CONFIG_APP_AUDIO_TONE_AMPLITUDE);
+    printf("tone: %s\n", err == ESP_OK ? "ok" : esp_err_to_name(err));
+    return err == ESP_OK ? 0 : 1;
+}
+
+static int cmd_bench_audio_gen(int ms)
+{
+    if (ms < 100 || ms > 5000) {
+        printf("usage: bench audio gen [ms]\n");
+        return 1;
+    }
+    size_t frames = (size_t)((uint64_t)AUDIO_SAMPLE_RATE * ms / 1000);
+    int16_t *pcm = heap_caps_malloc(frames * sizeof(int16_t),
+                                    MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    if (pcm == NULL) {
+        pcm = malloc(frames * sizeof(int16_t));
+    }
+    if (pcm == NULL) {
+        return 1;
+    }
+    for (size_t i = 0; i < frames; i++) {
+        float phase = 2.0f * (float)M_PI * 1000.0f * (float)i /
+                      (float)AUDIO_SAMPLE_RATE;
+        pcm[i] = (int16_t)(sinf(phase) * 6000.0f);
+    }
+
+    const char *path = AUDIO_REC_DIR "/gen_1khz.wav";
+    esp_err_t err = audio_wav_write(path, pcm, frames);
+    audio_measure_t m;
+    audio_measure(pcm, frames, &m);
+    printf("\ngen: %s, frames=%u\n", path, (unsigned)frames);
+    printf("  expected: 1000 Hz, -14.7 dBFS\n");
+    printf("  measured: %.0f Hz, %.1f dBFS, SNR=%.1f dB, rms=%.1f dBFS, dc=%d\n",
+           m.tone_hz, m.tone_dbfs, m.tone_snr_db, m.rms_dbfs, m.dc);
+    audio_in_free(pcm);
+    return err == ESP_OK ? 0 : 1;
+}
+
+static int cmd_bench_audio_dump(const char *path)
+{
+    if (path == NULL) {
+        printf("usage: bench audio dump <file>\n");
+        return 1;
+    }
+    int16_t *pcm = NULL;
+    size_t frames = 0;
+    esp_err_t err = audio_wav_read(path, &pcm, &frames);
+    if (err != ESP_OK) {
+        printf("read %s failed: %s\n", path, esp_err_to_name(err));
+        return 1;
+    }
+    printf("DUMP %u\n", (unsigned)frames);
+    for (size_t i = 0; i < frames; i += 16) {
+        for (size_t j = 0; j < 16 && i + j < frames; j++) {
+            printf("%04x", (uint16_t)pcm[i + j]);
+        }
+        printf("\n");
+    }
+    printf("ENDDUMP\n");
+    audio_in_free(pcm);
+    return 0;
+}
+
+static int cmd_bench_audio_list(void)
+{
+    DIR *dir = opendir(AUDIO_REC_DIR);
+    if (dir == NULL) {
+        printf("no directory %s\n", AUDIO_REC_DIR);
+        return 1;
+    }
+    printf("\n== %s ==\n", AUDIO_REC_DIR);
+    int count = 0;
+    uint64_t total = 0;
+    struct dirent *ent;
+    while ((ent = readdir(dir)) != NULL) {
+        size_t n = strlen(ent->d_name);
+        if (n < 5 || strcmp(ent->d_name + n - 4, ".wav") != 0) {
+            continue;
+        }
+        char path[320];
+        snprintf(path, sizeof(path), "%s/%s", AUDIO_REC_DIR, ent->d_name);
+        struct stat st;
+        if (stat(path, &st) != 0) {
+            continue;
+        }
+        wav_info_t info;
+        if (audio_wav_info(path, &info) == ESP_OK) {
+            printf("  %-34s %6" PRIu32 " ms %7u B\n", ent->d_name,
+                   info.duration_ms, (unsigned)st.st_size);
+        } else {
+            printf("  %-34s (bad WAV) %7u B\n", ent->d_name,
+                   (unsigned)st.st_size);
+        }
+        count++;
+        total += (uint64_t)st.st_size;
+    }
+    closedir(dir);
+    printf("files=%d total=%" PRIu64 " KB\n", count, total / 1024);
+    return count > 0 ? 0 : 1;
+}
+
+static int cmd_bench_audio_analyze(const char *path)
+{
+    char latest[160];
+    if (path == NULL) {
+        if (audio_wav_latest(latest, sizeof(latest)) != ESP_OK) {
+            printf("no recording found\n");
+            return 1;
+        }
+        path = latest;
+    }
+    int16_t *pcm = NULL;
+    size_t frames = 0;
+    esp_err_t err = audio_wav_read(path, &pcm, &frames);
+    if (err != ESP_OK) {
+        printf("read %s failed: %s\n", path, esp_err_to_name(err));
+        return 1;
+    }
+    audio_measure_t m;
+    audio_measure(pcm, frames, &m);
+    audio_vad_result_t vad;
+    audio_vad_analyze(pcm, frames, &vad);
+    printf("\n%s\n", path);
+    printf("  frames=%u peak=%d rms=%.1f dBFS dc=%d clip=%" PRIu32 " (%.2f%%)\n",
+           (unsigned)frames, m.peak, m.rms_dbfs, m.dc, m.clipped,
+           m.clip_ratio * 100.0f);
+    printf("  tone=%.0f Hz %.1f dBFS SNR=%.1f dB\n",
+           m.tone_hz, m.tone_dbfs, m.tone_snr_db);
+    printf("  vad=%s speech=%" PRIu32 " ms noise=%.1f speech=%.1f snr=%.1f zcr=%.3f\n",
+           vad.has_speech ? "yes" : "NO", vad.speech_ms,
+           vad.noise_dbfs, vad.speech_dbfs, vad.snr_db, vad.zcr);
+    audio_in_free(pcm);
+    return 0;
+}
+
+static int cmd_bench_audio_soak(int n)
+{
+    if (n < 1 || n > 30) {
+        printf("usage: bench audio soak [n]  (1..30)\n");
+        return 1;
+    }
+    printf("\n== audio soak %d x 1000 ms ==\n", n);
+    int ok = 0;
+    for (int i = 0; i < n; i++) {
+        esp_err_t err = audio_in_start(1000);
+        if (err != ESP_OK) {
+            printf("  #%02d start failed: %s\n", i, esp_err_to_name(err));
+            continue;
+        }
+        int64_t wait_start = esp_timer_get_time();
+        while (!audio_in_is_done() &&
+               (esp_timer_get_time() - wait_start) < 4000000) {
+            vTaskDelay(pdMS_TO_TICKS(20));
+        }
+        if (!audio_in_is_done()) {
+            printf("  #%02d capture timeout\n", i);
+            audio_in_cancel();
+            vTaskDelay(pdMS_TO_TICKS(100));
+            continue;
+        }
+        int16_t *pcm = NULL;
+        size_t frames = 0;
+        audio_capture_stats_t st;
+        err = audio_in_stop(&pcm, &frames, &st);
+        if (err != ESP_OK || frames == 0) {
+            printf("  #%02d stop=%s frames=%u\n", i, esp_err_to_name(err),
+                   (unsigned)frames);
+            audio_in_free(pcm);
+            continue;
+        }
+        audio_vad_result_t vad;
+        audio_vad_analyze(pcm, frames, &vad);
+        char path[160];
+        err = audio_wav_make_rec_path(path, sizeof(path));
+        if (err == ESP_OK) {
+            err = audio_wav_write(path, pcm, frames);
+        }
+        wav_info_t info;
+        bool valid = (err == ESP_OK) &&
+                     (audio_wav_info(path, &info) == ESP_OK) &&
+                     (info.frames == frames);
+        printf("  #%02d frames=%u clip=%" PRIu32 " speech=%s %" PRIu32
+               " ms file=%s\n",
+               i, (unsigned)frames, st.clipped,
+               vad.has_speech ? "yes" : "NO", vad.speech_ms,
+               valid ? "OK" : "FAIL");
+        if (valid) {
+            ok++;
+        }
+        audio_in_free(pcm);
+        vTaskDelay(pdMS_TO_TICKS(100));
+    }
+    printf("soak: %d/%d valid files\n", ok, n);
+    return ok == n ? 0 : 1;
+}
+
+static int cmd_bench_audio_selftest(void)
+{
+    printf("\n===== audio selftest =====\n");
+    int rc = cmd_bench_audio_info();
+    rc |= cmd_bench_audio_tone(300);
+    rc |= cmd_bench_audio_rec(1000, false);
+    printf("===== audio selftest: %s =====\n", rc == 0 ? "PASS" : "FAIL");
+    return rc;
+}
+
+static int cmd_bench_audio(int argc, char **argv)
+{
+    if (argc < 3) {
+        printf("usage: bench audio info|rec|play|tone|gen|list|analyze|soak|selftest\n");
+        return 1;
+    }
+    if (!strcmp(argv[2], "info")) {
+        return cmd_bench_audio_info();
+    }
+    if (!strcmp(argv[2], "rec")) {
+        int ms = (argc >= 4) ? atoi(argv[3]) : CONFIG_APP_AUDIO_RECORD_MS;
+        bool play = (argc >= 5 && !strcmp(argv[4], "play"));
+        return cmd_bench_audio_rec(ms, play);
+    }
+    if (!strcmp(argv[2], "play")) {
+        return cmd_bench_audio_play(argc >= 4 ? argv[3] : NULL);
+    }
+    if (!strcmp(argv[2], "tone")) {
+        int ms = (argc >= 4) ? atoi(argv[3]) : 1000;
+        return cmd_bench_audio_tone(ms);
+    }
+    if (!strcmp(argv[2], "gen")) {
+        int ms = (argc >= 4) ? atoi(argv[3]) : 500;
+        return cmd_bench_audio_gen(ms);
+    }
+    if (!strcmp(argv[2], "dump")) {
+        return cmd_bench_audio_dump(argc >= 4 ? argv[3] : NULL);
+    }
+    if (!strcmp(argv[2], "list")) {
+        return cmd_bench_audio_list();
+    }
+    if (!strcmp(argv[2], "analyze")) {
+        return cmd_bench_audio_analyze(argc >= 4 ? argv[3] : NULL);
+    }
+    if (!strcmp(argv[2], "soak")) {
+        int n = (argc >= 4) ? atoi(argv[3]) : 20;
+        return cmd_bench_audio_soak(n);
+    }
+    if (!strcmp(argv[2], "selftest")) {
+        return cmd_bench_audio_selftest();
+    }
+    printf("unknown audio subcommand: %s\n", argv[2]);
+    return 1;
+}
+
 static void print_bench_usage(void)
 {
     printf("usage:\n");
@@ -221,6 +649,8 @@ static void print_bench_usage(void)
     printf("  bench display full\n");
     printf("  bench display clean\n");
     printf("  bench keys [seconds]\n");
+    printf("  bench audio info|rec [ms] [play]|play [file]|tone [ms]\n");
+    printf("               list|analyze [file]|soak [n]|selftest\n");
     printf("  bench selftest\n");
 }
 
@@ -243,6 +673,9 @@ static int cmd_bench(int argc, char **argv)
     }
     if (!strcmp(argv[1], "selftest")) {
         return cmd_bench_selftest();
+    }
+    if (!strcmp(argv[1], "audio")) {
+        return cmd_bench_audio(argc, argv);
     }
     if (!strcmp(argv[1], "display")) {
         if (argc < 3) {
@@ -295,7 +728,7 @@ esp_err_t bench_init(void)
     const esp_console_cmd_t cmd = {
         .command = "bench",
         .help = "E-Ink board bring-up commands",
-        .hint = "info | fs | display | keys | selftest",
+        .hint = "info | fs | display | keys | audio | selftest",
         .func = cmd_bench,
     };
     err = esp_console_cmd_register(&cmd);

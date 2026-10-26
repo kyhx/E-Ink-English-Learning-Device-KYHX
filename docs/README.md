@@ -10,6 +10,7 @@
 | [`技术方案.md`](技术方案.md) | 驱动方案、SPI/时序/局刷细节 |
 | [`board_pinmap.md`](board_pinmap.md) | YD-ESP32-S3 P1/P2 引脚、音频/屏/按键接线 |
 | [`M0测试记录.md`](M0测试记录.md) | M0 分区/LittleFS/按键/bench/E0 实测 |
+| [`M2测试记录.md`](M2测试记录.md) | M2 音频链：录音/WAV/VAD/20 条/回环实测 |
 
 ## 屏幕与硬件
 
@@ -25,6 +26,7 @@
 | 文档 | 内容 |
 | --- | --- |
 | [`data_collection.md`](data_collection.md) | 采集协议、600 条设计、标注口径 |
+| [`../tools/audio/README.md`](../tools/audio/README.md) | M2 串口音频验收与 WAV 下载 |
 | [`public_datasets.md`](public_datasets.md) | 公开语料调研（speechocean762、L2-ARCTIC 等） |
 | [`public_test_speechocean762.md`](public_test_speechocean762.md) | 2000 条公开数据实测：69.7% / int8 98.3% |
 | [`toolchain.md`](toolchain.md) | Python/IDF/ONNX/TFLite/字体/串口工具链 |

@@ -1,13 +1,14 @@
 /*
- * E-Ink 英语学习机 —— 应用入口（M0）
+ * E-Ink 英语学习机 —— 应用入口（M2）
  *
  * 硬件：ESP32-S3-N16R8 + 驱动板 V1.5 + 4.2" 单色墨水屏（SSD1619A，400x300）
  *
- * M0 启动流程：
+ * M2 启动流程：
  *   1. NVS + EPD 初始化（partial LUT）
  *   2. LittleFS 挂载 10 MB storage 分区（首次自动格式化）
- *   3. 5 键驱动 + UART0 bench 控制台
- *   4. CONFIG_APP_MODE_DEMO=y 时跑旧 50 词演示；否则进入 M0 home 页
+ *   3. M2 音频链（I2S0 麦克风 / I2S1 功放 / WAV / VAD）
+ *   4. 5 键驱动 + UART0 bench 控制台
+ *   5. CONFIG_APP_MODE_DEMO=y 时跑旧 50 词演示；否则进入 M2 录音页
  *
  * bench 命令：
  *   bench info / fs / display band <y0> <h> <n> / display full /
@@ -30,6 +31,7 @@
 #include "epd_ssd1619a.h"
 
 #include "app_state.h"
+#include "audio.h"
 #include "bench.h"
 #include "board/buttons.h"
 #include "services/storage.h"
@@ -134,7 +136,7 @@ static void demo_run(void)
 /* ------------------------------------------------------------- entry */
 void app_main(void)
 {
-    ESP_LOGI(TAG, "boot: M0 skeleton");
+    ESP_LOGI(TAG, "boot: M2 audio chain");
 
     esp_err_t err = nvs_init();
     if (err != ESP_OK) {
@@ -152,6 +154,12 @@ void app_main(void)
     err = storage_init();
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "storage init failed: %s (bench fs will fail)",
+                 esp_err_to_name(err));
+    }
+
+    err = audio_init();
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "audio init failed: %s (bench audio will fail)",
                  esp_err_to_name(err));
     }
 
