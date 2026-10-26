@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>CNN 看到了什么</title>
+<style>
+  @font-face { font-family: "CJK"; src: local("Microsoft YaHei"), local("Noto Sans SC"), local("PingFang SC"); }
+  :root {
+    --bg:#0a0f1e; --panel:#121a30; --text:#f5f7ff; --muted:#97a5c6;
+    --teal:#5eead4; --amber:#fbbf24; --pink:#fb7185; --line:rgba(255,255,255,.13);
+  }
+  * { box-sizing:border-box; }
+  html,body { margin:0; width:100%; height:100%; background:var(--bg); }
+  body { font-family:Inter,CJK,sans-serif; color:var(--text); overflow:hidden; }
+  #root { position:absolute; inset:0; width:1920px; height:1080px; overflow:hidden;
+    background: radial-gradient(900px 520px at 8% 0%, rgba(94,234,212,.10), transparent 65%),
+                radial-gradient(900px 600px at 95% 100%, rgba(251,113,133,.08), transparent 65%), var(--bg); }
+  .grid-bg { position:absolute; inset:0;
+    background-image:linear-gradient(rgba(255,255,255,.03) 1px,transparent 1px),
+                     linear-gradient(90deg,rgba(255,255,255,.03) 1px,transparent 1px);
+    background-size:64px 64px; mask-image:linear-gradient(to bottom,rgba(0,0,0,.9),rgba(0,0,0,.2)); }
+  .progress { position:absolute; left:0; top:0; width:100%; height:6px; background:rgba(255,255,255,.06); z-index:100; }
+  .progress>i { display:block; height:100%; width:100%; background:linear-gradient(90deg,var(--teal),var(--amber)); transform:scaleX(0); transform-origin:left; }
+  .footer { position:absolute; left:80px; bottom:32px; font-size:17px; color:var(--muted); z-index:90; }
+  .footer b { color:var(--teal); }
+  .scene { position:absolute; inset:0; padding:70px 100px 100px; opacity:0; z-index:10; }
+  .kicker { font-size:20px; letter-spacing:.18em; text-transform:uppercase; color:var(--teal); font-weight:700; margin-bottom:10px; }
+  h2 { margin:0 0 12px; font-size:52px; line-height:1.1; letter-spacing:-.02em; font-weight:900; }
+  .lead { margin:0; color:var(--muted); font-size:24px; line-height:1.55; }
+  .accent{color:var(--teal)} .amber{color:var(--amber)} .pink{color:var(--pink)}
+  .center { height:100%; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; }
+  .title { font-size:82px; font-weight:900; letter-spacing:-.04em; line-height:1.06; }
+  .subtitle { margin-top:24px; font-size:28px; color:var(--muted); line-height:1.6; }
+  .pill { display:inline-flex; align-items:center; gap:10px; border:1px solid var(--line); border-radius:999px; padding:9px 18px; font-size:19px; color:var(--muted); background:rgba(255,255,255,.03); }
+  .dot { width:9px; height:9px; border-radius:50%; background:var(--teal); }
+  .frame { border:1px solid var(--line); border-radius:18px; overflow:hidden; background:var(--panel); }
+  .frame img { display:block; width:100%; height:auto; }
+  .cap { margin-top:12px; color:var(--muted); font-size:18px; line-height:1.55; }
+  .tag { font-size:15px; letter-spacing:.08em; font-weight:800; }
+  .pct { font-size:46px; font-weight:900; line-height:1; }
+  .small { color:var(--muted); font-size:16px; }
+  .flow { display:flex; gap:12px; align-items:center; margin-top:22px; color:var(--muted); font-size:16px; }
+  .flow span { border:1px solid var(--line); background:var(--panel); border-radius:10px; padding:7px 10px; }
+  .flow b { color:var(--amber); }
+  .layer-card { border:1px solid var(--line); border-radius:18px; background:var(--panel); padding:18px 20px; }
+  .layer-card .big { font-size:36px; font-weight:900; color:var(--teal); line-height:1; }
+  .layer-card .sub { color:var(--muted); font-size:15px; margin-top:6px; }
+  .hint-row, .next-row { display:flex; gap:18px; margin-top:24px; }
+  .hint-row div, .next-row div { flex:1; border:1px solid var(--line); border-radius:16px; background:var(--panel); padding:14px 18px; }
+  .hint-row b, .next-row b { display:block; font-size:28px; color:var(--teal); line-height:1; }
+  .hint-row span, .next-row span { display:block; color:var(--muted); font-size:15px; margin-top:6px; }
+  .next-row b { font-size:20px; color:var(--amber); }
+  .outro .big { font-size:60px; font-weight:900; line-height:1.15; }
+  .outro .line2 { font-size:28px; color:var(--muted); margin-top:16px; line-height:1.55; }
+</style>
+</head>
+<body>
+<div id="root" data-composition-id="main" data-start="0" data-duration="44" data-width="1920" data-height="1080">
+  <div class="grid-bg"></div>
+  <div class="progress"><i id="progress"></i></div>
+  <div class="footer"><b>speechocean762</b> · 6,066 参数 TinyMelNet · 激活值来自 model.pt</div>
+
+  <!-- 1 -->
+  <section id="s1" class="scene clip" data-start="0" data-duration="5" data-track-index="1" data-track-kind="graphics">
+    <div class="center">
+      <div class="kicker">CNN Internals · 01</div>
+      <div class="title">CNN <span class="accent">看到了什么？</span></div>
+      <div class="subtitle">8 → 16 → 32 个特征图 · 真实样本激活 · Grad-CAM</div>
+      <div style="margin-top:26px"><span class="pill"><span class="dot"></span> 不是示意图：权重来自公开数据模型</span></div>
+    </div>
+  </section>
+
+  <!-- 2 -->
+  <section id="s2" class="scene clip" data-start="5" data-duration="7" data-track-index="2" data-track-kind="graphics">
+    <div class="kicker">Input · 40×64 log-Mel</div>
+    <h2>模型先看到一张 <span class="amber">时频图</span></h2>
+    <div style="display:flex; gap:36px; align-items:center; margin-top:22px">
+      <div class="frame" style="width:980px"><img src="assets/mel_tn.png" alt="mel"></div>
+      <div style="flex:1">
+        <div class="tag pink">TN · 成人 · 真实 3 分</div>
+        <div style="font-size:24px; color:var(--muted); line-height:1.45; margin-top:10px">
+          I HAD TO FIND A<br>DIFFERENT BACK DOOR.
+        </div>
+        <div class="pct pink" style="margin-top:22px">p(correct)=0.062</div>
+        <div class="small" style="margin-top:8px">模型判“需改进”</div>
+        <div class="cap">横轴时间，纵轴频率；颜色越亮能量越强。<br>CNN 不读文本，只看这张图。</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 3 -->
+  <section id="s3" class="scene clip" data-start="12" data-duration="8" data-track-index="3" data-track-kind="graphics">
+    <div class="kicker">Layer 1 · conv1</div>
+    <h2>8 个滤波器，先找 <span class="accent">局部能量变化</span></h2>
+    <div class="frame" style="width:1500px; margin-top:14px"><img src="assets/conv1_tn.png" alt="conv1"></div>
+    <div class="flow"><span>1×40×64</span><b>→</b><span>8×40×64</span><b>→</b><span>16×20×32</span><b>→</b><span>32×10×16</span><b>→</b><span>2</span></div>
+    <div class="cap">很多通道是稀疏的：每个滤波器只响应某类时频结构；这张图来自 TN 样本的真实前向激活。</div>
+  </section>
+
+  <!-- 4 -->
+  <section id="s4" class="scene clip" data-start="20" data-duration="8" data-track-index="4" data-track-kind="graphics">
+    <div class="kicker">Layer 2 · conv2</div>
+    <h2>16 个通道，开始组合 <span class="amber">局部条纹</span></h2>
+    <div style="display:flex; gap:30px; align-items:flex-start; margin-top:16px">
+      <div class="frame" style="width:1040px"><img src="assets/conv2_tn.png" alt="conv2"></div>
+      <div style="flex:1">
+        <div class="layer-card"><div class="big">16×20×32</div><div class="sub">空间已减半；每个点覆盖更大的时频区域</div></div>
+        <div class="layer-card" style="margin-top:16px"><div class="big">3×3</div><div class="sub">感受野逐层变大，但仍是局部模式</div></div>
+        <div class="cap">到这一层，单通道已经不再是“边缘”，而是条纹/能量块的组合。</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 5 -->
+  <section id="s5" class="scene clip" data-start="28" data-duration="9" data-track-index="5" data-track-kind="graphics">
+    <div class="kicker">Layer 3 + Grad-CAM</div>
+    <h2>32 个通道，最后看 <span class="pink">哪里最影响判断</span></h2>
+    <div style="display:flex; gap:28px; align-items:center; margin-top:16px">
+      <div class="frame" style="width:1000px"><img src="assets/conv3_tn.png" alt="conv3"></div>
+      <div class="frame" style="width:620px"><img src="assets/gradcam_tn.png" alt="gradcam"></div>
+    </div>
+    <div class="cap"><span class="pink">Grad-CAM</span> 把 10×16 的梯度上采样回 40×64：高亮区域是“对当前预测贡献大”的时频块，不是音素标注。</div>
+    <div class="hint-row">
+      <div><b>10×16</b><span>conv3 的空间尺寸</span></div>
+      <div><b>≈4×4</b><span>每个位置约对应输入 Mel 的 4×4 格</span></div>
+      <div><b>块状</b><span>Grad-CAM 是区域级解释，不是像素级</span></div>
+    </div>
+  </section>
+
+  <!-- 6 -->
+  <section id="s6" class="scene clip outro" data-start="37" data-duration="7" data-track-index="6" data-track-kind="graphics">
+    <div class="kicker">Same weights · different evidence</div>
+    <h2 style="font-size:48px">同一套 CNN，不同样本关注 <span class="amber">不同区域</span></h2>
+    <div style="display:flex; gap:30px; margin-top:18px">
+      <div style="flex:1"><div class="frame"><img src="assets/gradcam_tn.png" alt="tn"></div><div class="tag pink" style="margin-top:10px">TN · p=0.062</div></div>
+      <div style="flex:1"><div class="frame"><img src="assets/gradcam_tp.png" alt="tp"></div><div class="tag" style="margin-top:10px;color:var(--teal)">TP · p=0.913</div></div>
+    </div>
+    <div class="line2" style="font-size:24px; margin-top:14px">但这只说明“模型用了哪些时频区域”，不能证明它学会了音素或发音规则；当前模型没有词条件化。</div>
+    <div class="next-row">
+      <div><b>现在</b><span>学生 Mel → 2 类概率</span></div>
+      <div><b>缺少</b><span>这个单词的标准发音 / 目标音素</span></div>
+      <div><b>下一步</b><span>Oxford 参考 Mel + 学生 Mel</span></div>
+    </div>
+  </section>
+</div>
+
+<script src="assets/gsap.min.js"></script>
+<script>
+  const tl=gsap.timeline({paused:true});
+  tl.fromTo("#progress",{scaleX:0},{scaleX:1,duration:44,ease:"none"},0);
+
+  const scenes=["#s1","#s2","#s3","#s4","#s5","#s6"];
+  const starts=[0,5,12,20,28,37], ends=[5,12,20,28,37,44];
+  scenes.forEach((s,i)=>{
+    tl.fromTo(s,{opacity:0},{opacity:1,duration:0.45},starts[i]);
+    if(i<scenes.length-1) tl.to(s,{opacity:0,duration:0.3},ends[i]-0.3);
+  });
+
+  tl.fromTo("#s1 .title",{y:28,opacity:0},{y:0,opacity:1,duration:0.85,ease:"power3.out"},0.15);
+  tl.fromTo("#s1 .subtitle, #s1 .pill",{y:14,opacity:0},{y:0,opacity:1,duration:0.65,stagger:.1},0.5);
+
+  tl.fromTo("#s2 .frame",{scale:1.04,opacity:0},{scale:1,opacity:1,duration:0.7,ease:"power2.out"},5.45);
+  tl.fromTo("#s2 .pct, #s2 .tag, #s2 .cap",{y:12,opacity:0},{y:0,opacity:1,duration:0.5,stagger:.1},5.9);
+
+  tl.fromTo("#s3 .frame",{y:18,opacity:0},{y:0,opacity:1,duration:0.7},12.45);
+  tl.fromTo("#s3 .cap, #s3 .flow",{opacity:0},{opacity:1,duration:0.5,stagger:.1},13.1);
+
+  tl.fromTo("#s4 .frame",{x:-18,opacity:0},{x:0,opacity:1,duration:0.7},20.45);
+  tl.fromTo("#s4 .layer-card, #s4 .cap",{x:18,opacity:0},{x:0,opacity:1,duration:0.55,stagger:.1},20.6);
+
+  tl.fromTo("#s5 .frame",{y:16,opacity:0},{y:0,opacity:1,duration:0.65,stagger:.12},28.4);
+  tl.fromTo("#s5 .cap",{opacity:0},{opacity:1,duration:0.5},29.1);
+  tl.fromTo("#s5 .hint-row div",{y:12,opacity:0},{y:0,opacity:1,duration:0.5,stagger:.08},29.4);
+
+  tl.fromTo("#s6 .frame",{y:16,opacity:0},{y:0,opacity:1,duration:0.6,stagger:.12},37.4);
+  tl.fromTo("#s6 .tag, #s6 .line2",{opacity:0},{opacity:1,duration:0.5,stagger:.1},37.8);
+  tl.fromTo("#s6 .next-row div",{y:12,opacity:0},{y:0,opacity:1,duration:0.5,stagger:.08},38.2);
+
+  window.__timelines=window.__timelines||{};
+  window.__timelines["main"]=tl;
+</script>
+</body>
+</html>

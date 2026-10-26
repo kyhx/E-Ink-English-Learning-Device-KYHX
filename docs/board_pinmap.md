@@ -112,11 +112,11 @@
 | BAT_ADC | 2 | P2-5 | ADC1_CH1 |
 | MIC BCLK | 14 | P1-20 | I2S0；ADC2 仅数字 |
 | MIC WS | 15 | P1-8 | I2S0 |
-| MIC SD | 16 | P1-9 | I2S0；INMP441 L/R=GND |
+| MIC SD | 16 | P1-9 | I2S0；MS4030（INMP441 兼容）L/R=GND |
 | AMP BCLK | 17 | P1-10 | I2S1 |
 | AMP LRC | 18 | P1-11 | I2S1 |
 | AMP DIN | 21 | P2-18 | I2S1 |
-| AMP SD | 47 | P2-17 | 空闲拉低 |
+| AMP SD | 47 | P2-17 | MAX98357A 使能：**高=开，低=关**；不接功放时才拉低 |
 | INA219 SDA | 39 | P2-9 | 与外置 JTAG 冲突 |
 | INA219 SCL | 40 | P2-8 | 与外置 JTAG 冲突 |
 
@@ -126,6 +126,8 @@
 
 ## 5. 供电与接线注意
 
+- **麦克风**：MS4030（INMP441 兼容），**3.3 V** 供电；L/R 接 GND 选左声道，BCLK=14 / WS=15 / SD=16。
+- **功放/喇叭**：MAX98357A + **3 W 喇叭**，功放用 **5 V** 供电；SD=47 **高电平使能**。喇叭是差分输出，任一端都不能再接 GND。
 - **烧录/串口**：用 "COM" Type-C 口（CH343P），`idf.py -p COM4 flash monitor`。
 - **原生 USB**："USB" 口是 GPIO19/20；如果要用 USB-OTG/JTAG，需要桥接板背面的 `USB-OTG` 焊盘。本项目暂不需要。
 - **5V 排针**：默认是输入；如果要用 COM 口供电同时在 5V 排针输出，需要桥接 `IN-OUT` 焊盘。

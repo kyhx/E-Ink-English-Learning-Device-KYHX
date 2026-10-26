@@ -1,0 +1,393 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>一次真实训练回放</title>
+<style>
+  @font-face {
+    font-family: "CJK";
+    src: local("Microsoft YaHei"), local("Noto Sans SC"), local("PingFang SC");
+  }
+  :root {
+    --bg: #0a0f1e;
+    --panel: #121a30;
+    --panel2: #1a2440;
+    --text: #f5f7ff;
+    --muted: #97a5c6;
+    --teal: #5eead4;
+    --amber: #fbbf24;
+    --pink: #fb7185;
+    --line: rgba(255,255,255,.13);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; width: 100%; height: 100%; background: var(--bg); }
+  body {
+    font-family: Inter, CJK, sans-serif;
+    color: var(--text);
+    overflow: hidden;
+  }
+  #root {
+    position: absolute; inset: 0; width: 1920px; height: 1080px;
+    overflow: hidden;
+    background:
+      radial-gradient(900px 520px at 10% 0%, rgba(94,234,212,.10), transparent 65%),
+      radial-gradient(900px 600px at 95% 100%, rgba(251,113,133,.09), transparent 65%),
+      var(--bg);
+  }
+  .grid-bg {
+    position: absolute; inset: 0;
+    background-image:
+      linear-gradient(rgba(255,255,255,.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,.03) 1px, transparent 1px);
+    background-size: 64px 64px;
+    mask-image: linear-gradient(to bottom, rgba(0,0,0,.9), rgba(0,0,0,.2));
+  }
+  .progress { position: absolute; left: 0; top: 0; width: 100%; height: 6px; background: rgba(255,255,255,.06); z-index: 100; }
+  .progress > i { display: block; height: 100%; width: 100%; background: linear-gradient(90deg, var(--teal), var(--amber)); transform: scaleX(0); transform-origin: left; }
+  .footer {
+    position: absolute; left: 80px; bottom: 34px; font-size: 18px; color: var(--muted);
+    letter-spacing: .03em; z-index: 90;
+  }
+  .footer b { color: var(--teal); }
+  .scene { position: absolute; inset: 0; padding: 76px 110px 100px; opacity: 0; z-index: 10; }
+  .kicker { font-size: 21px; letter-spacing: .18em; text-transform: uppercase; color: var(--teal); font-weight: 700; margin-bottom: 12px; }
+  h2 { margin: 0 0 14px; font-size: 56px; line-height: 1.1; letter-spacing: -.02em; font-weight: 900; }
+  .lead { margin: 0; color: var(--muted); font-size: 26px; line-height: 1.55; }
+  .accent { color: var(--teal); }
+  .amber { color: var(--amber); }
+  .pink { color: var(--pink); }
+  .center { height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; }
+  .title { font-size: 88px; font-weight: 900; letter-spacing: -.04em; line-height: 1.06; }
+  .subtitle { margin-top: 26px; font-size: 30px; color: var(--muted); line-height: 1.6; }
+  .pill { display: inline-flex; align-items: center; gap: 10px; border: 1px solid var(--line); border-radius: 999px; padding: 9px 18px; font-size: 20px; color: var(--muted); background: rgba(255,255,255,.03); }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--teal); }
+  .stat-row { display: flex; gap: 22px; margin-top: 36px; }
+  .stat { flex: 1; border: 1px solid var(--line); border-radius: 22px; background: var(--panel); padding: 22px 26px; }
+  .stat .num { font-size: 44px; font-weight: 900; color: var(--teal); line-height: 1; }
+  .stat .cap { font-size: 18px; color: var(--muted); margin-top: 8px; }
+  .bar-wrap { margin-top: 26px; border: 1px solid var(--line); border-radius: 18px; overflow: hidden; display: flex; height: 58px; }
+  .bar-ok { background: var(--teal); color: #06221f; display: flex; align-items: center; justify-content: center; font-size: 22px; font-weight: 800; width: 50%; }
+  .bar-bad { background: #3a1d2a; color: #ffd9e2; display: flex; align-items: center; justify-content: center; font-size: 22px; font-weight: 800; width: 50%; }
+  .note { margin-top: 24px; color: var(--muted); font-size: 20px; line-height: 1.6; }
+  .warn-card { margin-top: 38px; border: 1px solid rgba(251,191,36,.35); background: rgba(251,191,36,.06); border-radius: 18px; padding: 18px 24px; display: flex; gap: 26px; align-items: center; }
+  .warn-card b { color: var(--amber); font-size: 23px; white-space: nowrap; }
+  .warn-card span { color: var(--muted); font-size: 21px; }
+  .cm-stack { display: flex; height: 56px; border-radius: 14px; overflow: hidden; margin-top: 26px; }
+  .cm-stack div { display: flex; align-items: center; justify-content: center; font-size: 17px; font-weight: 800; white-space: nowrap; }
+  .cm-stack .ok { background: var(--teal); color: #06221f; }
+  .cm-stack .fp { background: var(--pink); color: #3b0a12; }
+  .cm-stack .fn { background: #7f1d2d; color: #ffe4e6; }
+  .charts { display: flex; justify-content: center; gap: 30px; margin-top: 22px; }
+  .chart-card { width: 800px; border: 1px solid var(--line); border-radius: 20px; background: var(--panel); padding: 14px 18px 8px; }
+  .chart-head { display: flex; justify-content: space-between; align-items: baseline; }
+  .chart-head b { font-size: 22px; }
+  .chart-head span { font-size: 15px; color: var(--muted); }
+  .legend { display: flex; gap: 18px; font-size: 15px; color: var(--muted); }
+  .legend i { display: inline-block; width: 18px; height: 4px; border-radius: 2px; margin-right: 6px; vertical-align: middle; }
+  svg text { font-family: Inter, CJK, sans-serif; fill: var(--muted); font-size: 13px; }
+  .line { fill: none; stroke-width: 4; stroke-linecap: round; stroke-linejoin: round; }
+  .train { stroke: var(--teal); }
+  .val { stroke: var(--amber); }
+  .head { stroke: rgba(255,255,255,.35); stroke-width: 1.5; stroke-dasharray: 5 6; }
+  .cm-wrap { display: flex; gap: 38px; margin-top: 30px; align-items: center; }
+  .cm { display: grid; grid-template-columns: 160px 210px 210px; grid-template-rows: 54px 210px 210px; gap: 10px; }
+  .cm .lab { display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 18px; }
+  .cm .box { border-radius: 18px; display: flex; flex-direction: column; align-items: center; justify-content: center; border: 1px solid var(--line); }
+  .cm .box b { font-size: 54px; line-height: 1; }
+  .cm .box span { font-size: 17px; color: var(--muted); margin-top: 8px; }
+  .cm .good { background: rgba(94,234,212,.12); border-color: rgba(94,234,212,.5); }
+  .cm .bad { background: rgba(251,113,133,.10); border-color: rgba(251,113,133,.45); }
+  .cm .good b { color: var(--teal); }
+  .cm .bad b { color: var(--pink); }
+  .cm-side { flex: 1; }
+  .kpi { display: flex; gap: 14px; flex-wrap: wrap; }
+  .kpi div { border: 1px solid var(--line); border-radius: 16px; background: var(--panel); padding: 14px 18px; min-width: 150px; }
+  .kpi b { display: block; font-size: 30px; color: var(--teal); }
+  .kpi span { color: var(--muted); font-size: 16px; }
+  .samples { display: flex; gap: 22px; margin-top: 26px; }
+  .sample { flex: 1; border: 1px solid var(--line); border-radius: 20px; background: var(--panel); overflow: hidden; }
+  .sample img { width: 100%; height: 190px; object-fit: cover; display: block; }
+  .sample .body { padding: 14px 18px 16px; }
+  .sample .tag { font-size: 15px; letter-spacing: .08em; font-weight: 800; }
+  .sample .text { font-size: 17px; color: var(--muted); line-height: 1.35; margin: 6px 0 10px; height: 46px; overflow: hidden; }
+  .sample .p { font-size: 30px; font-weight: 900; }
+  .sample .small { font-size: 15px; color: var(--muted); margin-top: 4px; }
+  .sample.tp { border-color: rgba(94,234,212,.55); }
+  .sample.tn { border-color: rgba(251,113,133,.55); }
+  .sample.fp { border-color: rgba(251,191,36,.55); }
+  .sample.tp .tag, .sample.tp .p { color: var(--teal); }
+  .sample.tn .tag, .sample.tn .p { color: var(--pink); }
+  .sample.fp .tag, .sample.fp .p { color: var(--amber); }
+  .quant { display: flex; align-items: center; gap: 34px; margin-top: 34px; }
+  .qbox { flex: 1; border: 1px solid var(--line); border-radius: 22px; background: var(--panel); padding: 26px 28px; }
+  .qbox h3 { margin: 0 0 8px; font-size: 28px; }
+  .qbox .meta { color: var(--muted); font-size: 18px; }
+  .bar { height: 20px; border-radius: 999px; background: rgba(255,255,255,.08); overflow: hidden; margin-top: 22px; }
+  .bar i { display: block; height: 100%; width: 100%; transform-origin: left; }
+  .float i { background: var(--pink); }
+  .int8 i { background: var(--teal); }
+  .chip { width: 330px; height: 190px; border: 2px solid rgba(94,234,212,.6); border-radius: 18px; background: linear-gradient(180deg,#10263a,#0b1424); display: flex; flex-direction: column; align-items: center; justify-content: center; box-shadow: 0 0 40px rgba(94,234,212,.16); }
+  .chip b { font-size: 28px; }
+  .chip span { color: var(--muted); font-size: 16px; margin-top: 4px; }
+  .deploy-flow { display: flex; align-items: center; gap: 18px; margin-top: 30px; }
+  .deploy-flow div { flex: 1; border: 1px solid var(--line); border-radius: 16px; background: var(--panel); padding: 16px 20px; font-size: 20px; }
+  .deploy-flow div span { display: block; color: var(--muted); font-size: 15px; margin-top: 5px; }
+  .deploy-flow b { color: var(--amber); font-size: 28px; }
+  .deploy-note { margin-top: 20px; color: var(--muted); font-size: 19px; }
+  .train-strip { display: flex; gap: 16px; margin-top: 10px; }
+  .train-strip div { flex: 1; border: 1px solid var(--line); border-radius: 16px; background: var(--panel); padding: 12px 18px; }
+  .train-strip b { display: block; font-size: 30px; color: var(--teal); line-height: 1; }
+  .train-strip span { color: var(--muted); font-size: 15px; }
+  .takeaway { margin-top: 22px; font-size: 21px; color: var(--muted); line-height: 1.6; }
+  .age-bars { display: flex; gap: 40px; margin-top: 20px; }
+  .age-bars > div { flex: 1; }
+  .age-bars .row { display: flex; align-items: center; gap: 12px; }
+  .age-bars .row span { width: 44px; color: var(--muted); font-size: 17px; }
+  .age-bars .track { flex: 1; height: 16px; border-radius: 999px; background: rgba(255,255,255,.08); overflow: hidden; }
+  .age-bars .track i { display: block; height: 100%; width: 0; transform-origin: left; background: var(--teal); }
+  .age-bars .row b { width: 70px; text-align: right; color: var(--teal); font-size: 20px; }
+  .outro .big { font-size: 64px; font-weight: 900; line-height: 1.15; }
+  .outro .line2 { font-size: 30px; color: var(--muted); margin-top: 18px; line-height: 1.55; }
+</style>
+</head>
+<body>
+<div id="root" data-composition-id="main" data-start="0" data-duration="74" data-width="1920" data-height="1080">
+  <div class="grid-bg"></div>
+  <div class="progress"><i id="progress"></i></div>
+  <div class="footer"><b>speechocean762</b> · CC BY 4.0 · 2000 句平衡子集 · 6,066 参数</div>
+
+  <!-- 1 -->
+  <section id="s1" class="scene clip" data-start="0" data-duration="6" data-track-index="1" data-track-kind="graphics">
+    <div class="center">
+      <div class="kicker">Real Training Run · 01</div>
+      <div class="title">一次真实训练<br><span class="accent">回放</span></div>
+      <div class="subtitle">2000 条非母语英语 · 20 个 epoch · 6,066 个参数</div>
+      <div style="margin-top: 28px"><span class="pill"><span class="dot"></span> 不是概念动画：数据来自 speechocean762</span></div>
+    </div>
+  </section>
+
+  <!-- 2 -->
+  <section id="s2" class="scene clip" data-start="6" data-duration="8" data-track-index="2" data-track-kind="graphics">
+    <div class="kicker">Data · 2000 条真实语音</div>
+    <h2>官方按说话人切分，<span class="accent">零重叠</span></h2>
+    <p class="lead">句级 accuracy ≥ 8 记为“正确”，≤ 7 记为“需改进”；这是代理任务，不是单词卡。</p>
+    <div class="stat-row">
+      <div class="stat"><div class="num">2000</div><div class="cap">平衡子集 / 句</div></div>
+      <div class="stat"><div class="num">125 / 125</div><div class="cap">train / test 说话人</div></div>
+      <div class="stat"><div class="num">1000 / 1000</div><div class="cap">train / test 句数</div></div>
+    </div>
+    <div class="bar-wrap">
+      <div class="bar-ok">正确 500</div>
+      <div class="bar-bad">需改进 500</div>
+    </div>
+    <div class="note">官方 test 说话人从未出现在 train；这不是随机按样本切分。</div>
+    <div class="warn-card"><b>为什么不是随机切？</b><span>同一个人同时出现在 train/test，模型会“认人”，不是“认发音”。</span></div>
+  </section>
+
+  <!-- 3 -->
+  <section id="s3" class="scene clip" data-start="14" data-duration="20" data-track-index="3" data-track-kind="graphics">
+    <div class="kicker">Training · 20 epochs</div>
+    <h2>loss 在降，验证集在 <span class="accent">波动</span></h2>
+    <p class="lead">best epoch 13 · val accuracy 69.7% · AUC 0.759；early stopping 没触发。</p>
+    <div class="charts">
+      <div class="chart-card">
+        <div class="chart-head"><b>loss</b><span>train / val</span></div>
+        <div class="legend"><span><i style="background:#5eead4"></i>train</span><span><i style="background:#fbbf24"></i>val</span></div>
+        <svg viewBox="0 0 720 330">
+          <defs><clipPath id="loss-clip"><rect id="loss-rect" x="55" y="30" width="0" height="270"/></clipPath></defs>
+          <line x1="60" y1="40" x2="60" y2="290" stroke="rgba(255,255,255,.16)"/>
+          <line x1="60" y1="290" x2="680" y2="290" stroke="rgba(255,255,255,.16)"/>
+          <line x1="60" y1="40" x2="680" y2="40" stroke="rgba(255,255,255,.07)"/>
+          <line x1="60" y1="102" x2="680" y2="102" stroke="rgba(255,255,255,.07)"/>
+          <line x1="60" y1="165" x2="680" y2="165" stroke="rgba(255,255,255,.07)"/>
+          <line x1="60" y1="227" x2="680" y2="227" stroke="rgba(255,255,255,.07)"/>
+          <text x="18" y="44">.72</text><text x="18" y="169">.60</text><text x="18" y="294">.48</text>
+          <text x="60" y="316">1</text><text x="185" y="316">5</text><text x="348" y="316">10</text><text x="511" y="316">15</text><text x="671" y="316">20</text>
+          <line id="loss-head" class="head" x1="60" y1="40" x2="60" y2="290"/>
+          <g clip-path="url(#loss-clip)">
+            <path id="loss-train" class="line train" d="M 60.0 89.4 L 92.6 137.4 L 125.3 158.7 L 157.9 165.6 L 190.5 178.6 L 223.2 182.9 L 255.8 197.1 L 288.4 187.0 L 321.1 194.7 L 353.7 193.5 L 386.3 205.7 L 418.9 220.8 L 451.6 221.2 L 484.2 237.3 L 516.8 218.9 L 549.5 236.2 L 582.1 231.8 L 614.7 243.1 L 647.4 234.9 L 680.0 243.8"/>
+            <path id="loss-val" class="line val" d="M 60.0 101.0 L 92.6 82.5 L 125.3 66.9 L 157.9 61.1 L 190.5 150.0 L 223.2 150.5 L 255.8 72.4 L 288.4 167.3 L 321.1 53.6 L 353.7 163.4 L 386.3 106.4 L 418.9 167.1 L 451.6 168.3 L 484.2 142.7 L 516.8 69.7 L 549.5 156.4 L 582.1 164.7 L 614.7 163.4 L 647.4 166.4 L 680.0 162.1"/>
+          </g>
+        </svg>
+      </div>
+      <div class="chart-card">
+        <div class="chart-head"><b>accuracy</b><span>train / val</span></div>
+        <div class="legend"><span><i style="background:#5eead4"></i>train</span><span><i style="background:#fbbf24"></i>val</span></div>
+        <svg viewBox="0 0 720 330">
+          <defs><clipPath id="acc-clip"><rect id="acc-rect" x="55" y="30" width="0" height="270"/></clipPath></defs>
+          <line x1="60" y1="40" x2="60" y2="290" stroke="rgba(255,255,255,.16)"/>
+          <line x1="60" y1="290" x2="680" y2="290" stroke="rgba(255,255,255,.16)"/>
+          <line x1="60" y1="40" x2="680" y2="40" stroke="rgba(255,255,255,.07)"/>
+          <line x1="60" y1="111" x2="680" y2="111" stroke="rgba(255,255,255,.07)"/>
+          <line x1="60" y1="183" x2="680" y2="183" stroke="rgba(255,255,255,.07)"/>
+          <line x1="60" y1="254" x2="680" y2="254" stroke="rgba(255,255,255,.07)"/>
+          <text x="18" y="44">.80</text><text x="18" y="115">.70</text><text x="18" y="187">.60</text><text x="18" y="258">.50</text>
+          <text x="60" y="316">1</text><text x="185" y="316">5</text><text x="348" y="316">10</text><text x="511" y="316">15</text><text x="671" y="316">20</text>
+          <line id="acc-head" class="head" x1="60" y1="40" x2="60" y2="290"/>
+          <g clip-path="url(#acc-clip)">
+            <path id="acc-train" class="line train" d="M 60.0 190.0 L 92.6 139.3 L 125.3 119.3 L 157.9 117.9 L 190.5 116.4 L 223.2 103.6 L 255.8 97.1 L 288.4 97.9 L 321.1 98.6 L 353.7 107.9 L 386.3 93.6 L 418.9 78.6 L 451.6 82.9 L 484.2 76.4 L 516.8 91.4 L 549.5 81.4 L 582.1 82.9 L 614.7 64.3 L 647.4 84.3 L 680.0 68.6"/>
+            <path id="acc-val" class="line val" d="M 60.0 162.9 L 92.6 212.1 L 125.3 164.3 L 157.9 173.6 L 190.5 121.4 L 223.2 120.0 L 255.8 164.3 L 288.4 113.6 L 321.1 155.7 L 353.7 120.7 L 386.3 152.1 L 418.9 119.3 L 451.6 113.6 L 484.2 127.9 L 516.8 167.9 L 549.5 120.7 L 582.1 111.4 L 614.7 119.3 L 647.4 113.6 L 680.0 117.9"/>
+          </g>
+          <circle id="best-dot" cx="451.6" cy="113.6" r="9" fill="#0a0f1e" stroke="#5eead4" stroke-width="4" opacity="0"/>
+          <text id="best-label" x="462" y="103" fill="#5eead4" font-size="16" opacity="0">best 13</text>
+        </svg>
+      </div>
+    </div>
+    <div class="train-strip">
+      <div><b>13</b><span>best epoch</span></div>
+      <div><b>0.697</b><span>val accuracy</span></div>
+      <div><b>0.694</b><span>F1</span></div>
+      <div><b>0.759</b><span>ROC-AUC</span></div>
+    </div>
+    <div class="takeaway">训练 loss 从 0.67 降到 0.52；验证 loss 在 0.60–0.71 之间反复。别只看训练 loss。</div>
+  </section>
+
+  <!-- 4 -->
+  <section id="s4" class="scene clip" data-start="34" data-duration="10" data-track-index="4" data-track-kind="graphics">
+    <div class="kicker">Confusion · 1000 条验证集</div>
+    <h2>错 303 条，但对“错误”的召回只有 <span class="pink">68.6%</span></h2>
+    <div class="cm-wrap">
+      <div class="cm">
+        <div class="lab"></div><div class="lab">预测：需改进</div><div class="lab">预测：良好</div>
+        <div class="lab">实际：需改进</div>
+        <div class="box good"><b>354</b><span>TN</span></div>
+        <div class="box bad"><b>146</b><span>FP</span></div>
+        <div class="lab">实际：良好</div>
+        <div class="box bad"><b>157</b><span>FN</span></div>
+        <div class="box good"><b>343</b><span>TP</span></div>
+      </div>
+      <div class="cm-side">
+        <div class="kpi">
+          <div><b>69.7%</b><span>accuracy</span></div>
+          <div><b>70.1%</b><span>precision</span></div>
+          <div><b>68.6%</b><span>recall</span></div>
+          <div><b>69.4%</b><span>F1</span></div>
+        </div>
+        <div class="note">146 个“需改进”被放过，157 个“良好”被误判。<br>模型偏保守/偏严都不是免费的。</div>
+      </div>
+    </div>
+    <div class="cm-stack">
+      <div class="ok" style="width:69.7%">正确 697</div>
+      <div class="fp" style="width:14.6%">FP 146</div>
+      <div class="fn" style="width:15.7%">FN 157</div>
+    </div>
+  </section>
+
+  <!-- 5 -->
+  <section id="s5" class="scene clip" data-start="44" data-duration="14" data-track-index="5" data-track-kind="graphics">
+    <div class="kicker">Real Samples · p(correct)</div>
+    <h2>同一张 Mel，模型给出完全不同的 <span class="amber">概率</span></h2>
+    <div class="samples">
+      <div class="sample tp">
+        <img src="assets/mel_tp.png" alt="TP">
+        <div class="body"><div class="tag">TP · 成人</div><div class="text">ANYTHING ELSE IN THE WORLD</div><div class="p">p=0.913</div><div class="small">真实 9 分 → 判“正确”</div></div>
+      </div>
+      <div class="sample tn">
+        <img src="assets/mel_tn.png" alt="TN">
+        <div class="body"><div class="tag">TN · 成人</div><div class="text">I HAD TO FIND A DIFFERENT BACK DOOR.</div><div class="p">p=0.062</div><div class="small">真实 3 分 → 判“错误”</div></div>
+      </div>
+      <div class="sample fp">
+        <img src="assets/mel_fp.png" alt="FP">
+        <div class="body"><div class="tag">FP · 8 岁</div><div class="text">JIM NEEDS NEW RAINCOAT</div><div class="p">p=0.079</div><div class="small">真实 9 分 → 误判“错误”</div></div>
+      </div>
+    </div>
+    <div class="note">儿童 61.3% vs 成人 77.5%；2 秒中心裁剪是主要混杂因素，不是模型“听懂”了发音。</div>
+    <div class="age-bars">
+      <div><div class="row"><span>成人</span><div class="track"><i id="age-adult" style="width:77.5%"></i></div><b>77.5%</b></div></div>
+      <div><div class="row"><span>儿童</span><div class="track"><i id="age-child" style="width:61.3%"></i></div><b>61.3%</b></div></div>
+    </div>
+  </section>
+
+  <!-- 6 -->
+  <section id="s6" class="scene clip" data-start="58" data-duration="8" data-track-index="6" data-track-kind="graphics">
+    <div class="kicker">Deploy · int8</div>
+    <h2>26.9 KB → <span class="accent">11.5 KB</span>，标签几乎不变</h2>
+    <div class="quant">
+      <div class="qbox float"><h3>float32</h3><div class="meta">26.9 KB · 6,066 参数</div><div class="bar float"><i id="bfloat"></i></div></div>
+      <div class="qbox int8"><h3>int8</h3><div class="meta">11.5 KB · ESP32-S3 / TFLM</div><div class="bar int8"><i id="bint8"></i></div></div>
+      <div class="chip"><b>ESP32-S3</b><span>98.3% 标签一致</span><span>70.0% int8 accuracy</span></div>
+    </div>
+    <div class="deploy-flow">
+      <div>model_int8.tflite<span>11.5 KB · NCHW 1×1×40×64</span></div>
+      <b>→</b>
+      <div>model_data.cc + model_params.h<span>scale / zero / C 数组</span></div>
+      <b>→</b>
+      <div>ESP32-S3 TFLM<span>本地推理，不上传音频</span></div>
+    </div>
+    <div class="deploy-note">int8 只改变存储和速度，不会让模型更准；准确率仍由数据和任务决定。</div>
+  </section>
+
+  <!-- 7 -->
+  <section id="s7" class="scene clip outro" data-start="66" data-duration="8" data-track-index="7" data-track-kind="graphics">
+    <div class="center">
+      <div class="kicker">What this run actually proves</div>
+      <div class="big">管线通了，<br><span class="amber">但还不是单词卡模型</span></div>
+      <div class="line2">下一步：自采 600 条 + Oxford 参考发音<br>把“学生 Mel + 参考 Mel”一起喂给模型</div>
+      <div style="margin-top: 26px"><span class="pill"><span class="dot"></span> 69.7% 是句级代理任务，不是最终准确率</span></div>
+    </div>
+  </section>
+</div>
+
+<script src="assets/gsap.min.js"></script>
+<script>
+  const tl = gsap.timeline({ paused: true });
+  tl.fromTo("#progress", { scaleX: 0 }, { scaleX: 1, duration: 74, ease: "none" }, 0);
+
+  // scene fades
+  const scenes = ["#s1","#s2","#s3","#s4","#s5","#s6","#s7"];
+  const starts = [0,6,14,34,44,58,66];
+  const ends   = [6,14,34,44,58,66,74];
+  scenes.forEach((s,i) => {
+    tl.fromTo(s, { opacity: 0 }, { opacity: 1, duration: 0.5 }, starts[i]);
+    if (i < scenes.length - 1) tl.to(s, { opacity: 0, duration: 0.35 }, ends[i] - 0.35);
+  });
+
+  // s1
+  tl.fromTo("#s1 .title", { y: 30, opacity: 0 }, { y: 0, opacity: 1, duration: 0.9, ease: "power3.out" }, 0.15);
+  tl.fromTo("#s1 .subtitle, #s1 .pill", { y: 16, opacity: 0 }, { y: 0, opacity: 1, duration: 0.7, stagger: 0.1 }, 0.55);
+
+  // s2
+  tl.fromTo("#s2 .stat", { y: 24, opacity: 0 }, { y: 0, opacity: 1, duration: 0.6, stagger: 0.12 }, 6.5);
+  tl.fromTo("#s2 .bar-wrap", { scaleX: 0, opacity: 0 }, { scaleX: 1, opacity: 1, duration: 0.8, ease: "power2.out" }, 7.2);
+  tl.fromTo("#s2 .note", { opacity: 0 }, { opacity: 1, duration: 0.5 }, 8.0);
+  tl.fromTo("#s2 .warn-card", { y: 14, opacity: 0 }, { y: 0, opacity: 1, duration: 0.6 }, 9.2);
+
+  // s3 charts
+  tl.fromTo("#s3 .chart-card", { y: 20, opacity: 0 }, { y: 0, opacity: 1, duration: 0.7, stagger: 0.12 }, 14.5);
+  tl.fromTo("#loss-rect", { attr: { width: 0 } }, { attr: { width: 625 }, duration: 12.5, ease: "power1.inOut" }, 15.2);
+  tl.fromTo("#acc-rect", { attr: { width: 0 } }, { attr: { width: 625 }, duration: 12.5, ease: "power1.inOut" }, 15.2);
+  tl.to("#loss-head", { attr: { x1: 680, x2: 680 }, duration: 12.5, ease: "power1.inOut" }, 15.2);
+  tl.to("#acc-head", { attr: { x1: 680, x2: 680 }, duration: 12.5, ease: "power1.inOut" }, 15.2);
+  tl.to("#best-dot", { opacity: 1, duration: 0.3 }, 29.0);
+  tl.to("#best-label", { opacity: 1, duration: 0.3 }, 29.0);
+  tl.fromTo("#s3 .train-strip div", { y: 14, opacity: 0 }, { y: 0, opacity: 1, duration: 0.5, stagger: 0.08 }, 29.2);
+  tl.fromTo("#s3 .takeaway", { opacity: 0 }, { opacity: 1, duration: 0.5 }, 29.7);
+
+  // s4
+  tl.fromTo("#s4 .cm .box", { scale: 0.9, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.6, stagger: 0.1, ease: "back.out(1.4)" }, 34.6);
+  tl.fromTo("#s4 .kpi div", { y: 14, opacity: 0 }, { y: 0, opacity: 1, duration: 0.5, stagger: 0.08 }, 35.4);
+  tl.fromTo("#s4 .cm-stack", { scaleX: 0, opacity: 0 }, { scaleX: 1, opacity: 1, duration: 0.8, ease: "power2.out" }, 40.0);
+
+  // s5
+  tl.fromTo("#s5 .sample", { y: 24, opacity: 0 }, { y: 0, opacity: 1, duration: 0.7, stagger: 0.15 }, 44.6);
+  tl.fromTo("#s5 .note", { opacity: 0 }, { opacity: 1, duration: 0.5 }, 46.5);
+  tl.fromTo("#age-adult", { scaleX: 0 }, { scaleX: 1, duration: 0.8, ease: "power2.out" }, 46.8);
+  tl.fromTo("#age-child", { scaleX: 0 }, { scaleX: 1, duration: 0.8, ease: "power2.out" }, 46.9);
+
+  // s6
+  tl.fromTo("#s6 .qbox", { y: 18, opacity: 0 }, { y: 0, opacity: 1, duration: 0.6, stagger: 0.12 }, 58.5);
+  tl.fromTo("#s6 .chip", { scale: 0.92, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.6, ease: "back.out(1.3)" }, 58.7);
+  tl.fromTo("#bfloat", { scaleX: 0 }, { scaleX: 1, duration: 0.9, ease: "power2.out" }, 59.0);
+  tl.fromTo("#bint8", { scaleX: 0 }, { scaleX: 0.43, duration: 0.9, ease: "power2.out" }, 59.2);
+  tl.fromTo("#s6 .deploy-flow > *", { y: 14, opacity: 0 }, { y: 0, opacity: 1, duration: 0.5, stagger: 0.08 }, 60.0);
+  tl.fromTo("#s6 .deploy-note", { opacity: 0 }, { opacity: 1, duration: 0.5 }, 60.6);
+
+  // s7
+  tl.fromTo("#s7 .big", { y: 22, opacity: 0 }, { y: 0, opacity: 1, duration: 0.8 }, 66.2);
+  tl.fromTo("#s7 .line2, #s7 .pill", { y: 14, opacity: 0 }, { y: 0, opacity: 1, duration: 0.6, stagger: 0.12 }, 66.8);
+
+  window.__timelines = window.__timelines || {};
+  window.__timelines["main"] = tl;
+</script>
+</body>
+</html>

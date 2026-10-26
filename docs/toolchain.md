@@ -139,6 +139,39 @@ print(y.shape, sr2, librosa.power_to_db(mel).shape)
 
 本机结果：DejaVuSans 的 36 个 IPA 字符全部覆盖；Noto Sans SC 的 37 个示例汉字全部覆盖。正式词库生成后，应把 `words.csv` 里出现过的所有 IPA/汉字都加入检查，缺字直接让构建失败。
 
+### 2.4 模型/数据管线
+
+训练 + ONNX/TFLite int8 + parity + C 数组导出，一条命令：
+
+```powershell
+.\.venv-train\Scripts\python.exe tools\pipeline\run.py --toy --epochs 20 --out build/pipeline_toy
+```
+
+真实数据用 `--data-dir data/dataset/v1.0 --val-speakers S05,S06`；详细说明见 [`tools/pipeline/README.md`](../tools/pipeline/README.md)。
+
+图形界面：
+
+```powershell
+.\.venv-train\Scripts\python.exe tools\pipeline\gui.py
+```
+
+GUI 的“采集 / 标注”页需要 `sounddevice`（已加入 `tools/train/requirements.txt`）。采集后检查：
+
+```powershell
+.\.venv-train\Scripts\python.exe tools\pipeline\check_collected.py --data-dir data\collected\v1.0
+```
+
+采集协议见 [`data_collection.md`](data_collection.md)。
+
+### 2.5 参考发音（Oxford / Google）
+
+```powershell
+.\.venv-train\Scripts\python.exe tools\reference\fetch_oxford_audio.py `
+  --words-file data\words.csv --accents both --out data\reference\oxford
+```
+
+50 词 × 英/美音 = 100 条，MP3 + 16 kHz WAV + `metadata.csv`。版权音频仅本地使用，详见 [`tools/reference/README.md`](../tools/reference/README.md)。
+
 ---
 
 ## 3. 常用命令

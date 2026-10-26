@@ -6,6 +6,7 @@ scikit-learn
 matplotlib
 librosa
 soundfile
+sounddevice
 PyYAML
 tqdm
 pytest

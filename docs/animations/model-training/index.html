@@ -1,0 +1,533 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>模型训练到底在做什么</title>
+<style>
+  @font-face {
+    font-family: "CJK";
+    src: local("Microsoft YaHei"), local("Noto Sans SC"), local("PingFang SC");
+  }
+
+  :root {
+    --bg: #0b1020;
+    --panel: #141b31;
+    --panel2: #1b2440;
+    --text: #f4f7ff;
+    --muted: #9aa7c7;
+    --teal: #5eead4;
+    --amber: #fbbf24;
+    --pink: #fb7185;
+    --line: rgba(255,255,255,.14);
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; width: 100%; height: 100%; background: var(--bg); }
+  body {
+    font-family: Inter, CJK, sans-serif;
+    color: var(--text);
+    overflow: hidden;
+  }
+
+  #root {
+    position: absolute;
+    inset: 0;
+    width: 1920px;
+    height: 1080px;
+    overflow: hidden;
+    background:
+      radial-gradient(900px 520px at 12% 0%, rgba(94,234,212,.12), transparent 65%),
+      radial-gradient(900px 600px at 92% 100%, rgba(251,113,133,.10), transparent 65%),
+      var(--bg);
+  }
+
+  .grid-bg {
+    position: absolute; inset: 0;
+    background-image:
+      linear-gradient(rgba(255,255,255,.035) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,.035) 1px, transparent 1px);
+    background-size: 64px 64px;
+    mask-image: linear-gradient(to bottom, rgba(0,0,0,.9), rgba(0,0,0,.25));
+  }
+
+  .progress {
+    position: absolute; left: 0; top: 0; height: 6px; width: 100%;
+    background: rgba(255,255,255,.06);
+    z-index: 100;
+  }
+  .progress > i {
+    display: block; height: 100%; width: 100%;
+    background: linear-gradient(90deg, var(--teal), var(--amber));
+    transform: scaleX(0);
+    transform-origin: left center;
+  }
+
+  .footer {
+    position: absolute; left: 80px; bottom: 42px;
+    font-size: 20px; color: var(--muted); letter-spacing: .04em;
+    z-index: 90;
+  }
+  .footer b { color: var(--teal); font-weight: 700; }
+
+  .scene {
+    position: absolute; inset: 0;
+    padding: 84px 110px 110px;
+    opacity: 0;
+    z-index: 10;
+  }
+  .scene .kicker {
+    font-size: 22px; letter-spacing: .18em; text-transform: uppercase;
+    color: var(--teal); font-weight: 700; margin-bottom: 14px;
+  }
+  .scene h2 {
+    margin: 0 0 18px; font-size: 58px; line-height: 1.12; font-weight: 900;
+    letter-spacing: -.02em;
+  }
+  .scene p.lead {
+    margin: 0; color: var(--muted); font-size: 28px; line-height: 1.6;
+  }
+  .accent { color: var(--teal); }
+  .amber { color: var(--amber); }
+  .pink { color: var(--pink); }
+
+  .center {
+    height: 100%;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    text-align: center;
+  }
+
+  .title {
+    font-size: 92px; line-height: 1.08; font-weight: 900; letter-spacing: -.035em;
+    max-width: 1500px;
+  }
+  .title .thin { color: var(--muted); font-weight: 400; }
+  .subtitle {
+    margin-top: 30px; font-size: 32px; color: var(--muted); line-height: 1.6;
+  }
+  .pill {
+    display: inline-flex; align-items: center; gap: 10px;
+    border: 1px solid var(--line); border-radius: 999px;
+    padding: 10px 18px; font-size: 21px; color: var(--muted);
+    background: rgba(255,255,255,.03);
+  }
+  .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--teal); }
+
+  .row { display: flex; align-items: center; gap: 56px; }
+  .card {
+    border: 1px solid var(--line); border-radius: 28px;
+    background: linear-gradient(180deg, rgba(255,255,255,.045), rgba(255,255,255,.015));
+    padding: 34px 38px;
+  }
+
+  /* waveform */
+  .wave {
+    width: 480px; height: 230px;
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+  }
+  .wave i {
+    display: block; width: 10px; height: 180px; border-radius: 8px;
+    background: linear-gradient(180deg, var(--teal), rgba(94,234,212,.25));
+    transform: scaleY(.18); transform-origin: center center;
+  }
+
+  .arrow {
+    font-size: 58px; color: var(--amber); line-height: 1;
+  }
+
+  /* mel grid */
+  .mel-wrap { position: relative; width: 520px; height: 330px; }
+  .mel-grid {
+    position: absolute; inset: 0; border-radius: 18px; overflow: hidden;
+    border: 1px solid rgba(94,234,212,.35);
+    background:
+      repeating-linear-gradient(to bottom, rgba(94,234,212,.16) 0 2px, transparent 2px 8px),
+      repeating-linear-gradient(to right, rgba(255,255,255,.07) 0 1px, transparent 1px 9px),
+      linear-gradient(180deg, #0f2a35, #10192c);
+  }
+  .mel-grid::after {
+    content: "";
+    position: absolute; left: 0; right: 0; top: 32%;
+    height: 5%; background: rgba(251,191,36,.62);
+    box-shadow: 0 42px 0 rgba(251,191,36,.48), 0 86px 0 rgba(94,234,212,.55), 0 128px 0 rgba(94,234,212,.35);
+  }
+  .mel-label {
+    position: absolute; left: 0; bottom: -44px; width: 100%;
+    text-align: center; font-size: 22px; color: var(--muted);
+  }
+  .axis-y {
+    position: absolute; left: -46px; top: 0; height: 100%;
+    display: flex; flex-direction: column; justify-content: space-between;
+    font-size: 17px; color: var(--muted);
+  }
+
+  /* dataset cards */
+  .shots { display: flex; gap: 30px; margin-top: 28px; }
+  .shot {
+    flex: 1; border-radius: 24px; overflow: hidden;
+    border: 1px solid var(--line); background: var(--panel);
+  }
+  .shot img { display: block; width: 100%; height: 300px; object-fit: contain; background: #0e1729; }
+  .shot .cap {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 18px 22px; font-size: 24px;
+  }
+  .badge { font-size: 18px; padding: 5px 12px; border-radius: 999px; }
+  .badge.ok { color: #052e2b; background: var(--teal); }
+  .badge.bad { color: #3b0a12; background: var(--pink); }
+
+  /* CNN */
+  .cnn-stage { position: relative; width: 760px; height: 420px; }
+  .cnn-grid {
+    position: absolute; inset: 0; border-radius: 22px;
+    border: 1px solid rgba(94,234,212,.28); overflow: hidden;
+    background:
+      repeating-linear-gradient(to bottom, rgba(94,234,212,.10) 0 2px, transparent 2px 14px),
+      repeating-linear-gradient(to right, rgba(255,255,255,.06) 0 1px, transparent 1px 14px),
+      #0e1729;
+  }
+  .kernel {
+    position: absolute; left: 0; top: 0; width: 84px; height: 84px;
+    border: 3px solid var(--amber); border-radius: 12px;
+    box-shadow: 0 0 36px rgba(251,191,36,.45), inset 0 0 22px rgba(251,191,36,.18);
+    z-index: 3;
+  }
+  .kernel::after {
+    content: "3×3"; position: absolute; left: 50%; top: -34px; transform: translateX(-50%);
+    font-size: 18px; color: var(--amber); white-space: nowrap;
+  }
+  .feature {
+    position: absolute; right: 0; top: 50px; width: 260px;
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px;
+  }
+  .feature i {
+    display: block; height: 54px; border-radius: 8px;
+    background: rgba(94,234,212,.16); border: 1px solid rgba(94,234,212,.24);
+  }
+  .feature.inline {
+    position: static; width: auto; margin: 0;
+    grid-template-columns: repeat(3, 1fr);
+  }
+  .feature.inline i { height: 44px; }
+
+  /* training loop */
+  .loop { display: flex; align-items: center; gap: 18px; margin-top: 34px; }
+  .loop .step {
+    flex: 1; text-align: center; padding: 28px 14px; border-radius: 20px;
+    border: 1px solid var(--line); background: var(--panel);
+  }
+  .loop .step b { display: block; font-size: 26px; margin-bottom: 8px; }
+  .loop .step span { color: var(--muted); font-size: 19px; }
+  .loop .sep { color: var(--amber); font-size: 34px; }
+
+  .loss-wrap { margin-top: 34px; display: flex; gap: 40px; align-items: flex-end; }
+  .loss-card { flex: 1; padding: 26px 30px; border-radius: 24px; border: 1px solid var(--line); background: var(--panel); }
+  .loss-card .num { font-size: 44px; font-weight: 900; color: var(--teal); }
+  .loss-card .cap { color: var(--muted); font-size: 20px; margin-top: 4px; }
+  .loss-chart { width: 640px; height: 220px; }
+
+  /* split */
+  .people { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 22px; }
+  .person {
+    width: 62px; height: 62px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 22px; font-weight: 700; color: #06121a;
+    background: var(--teal); border: 3px solid rgba(255,255,255,.25);
+  }
+  .person.test { background: var(--amber); }
+  .split { display: flex; gap: 44px; margin-top: 20px; }
+  .split .box { flex: 1; padding: 28px 32px; border-radius: 24px; border: 1px solid var(--line); background: var(--panel); }
+  .split h3 { margin: 0 0 8px; font-size: 28px; }
+  .split .small { color: var(--muted); font-size: 20px; }
+
+  /* quant */
+  .quant { display: flex; align-items: center; gap: 34px; margin-top: 34px; }
+  .qbox { flex: 1; padding: 30px; border-radius: 24px; border: 1px solid var(--line); background: var(--panel); }
+  .qbox h3 { margin: 0 0 10px; font-size: 30px; }
+  .qbox .bar { height: 18px; border-radius: 999px; background: rgba(255,255,255,.1); overflow: hidden; margin-top: 18px; }
+  .qbox .bar i { display: block; height: 100%; width: 100%; transform-origin: left; }
+  .qbox.float .bar i { background: var(--pink); }
+  .qbox.int8 .bar i { background: var(--teal); }
+
+  .chip {
+    position: relative; width: 360px; height: 220px; margin-top: 30px;
+    border-radius: 18px; border: 2px solid rgba(94,234,212,.65);
+    background: linear-gradient(180deg, #10263a, #0b1424);
+    box-shadow: 0 0 46px rgba(94,234,212,.20);
+    display: flex; align-items: center; justify-content: center; text-align: center;
+  }
+  .chip b { font-size: 30px; display: block; }
+  .chip span { color: var(--muted); font-size: 19px; }
+  .pin { position: absolute; width: 34px; height: 8px; background: rgba(94,234,212,.6); }
+  .pin.l { left: -36px; } .pin.r { right: -36px; }
+  .pin.t { top: -10px; width: 8px; height: 30px; } .pin.b { bottom: -10px; width: 8px; height: 30px; }
+
+  .outro h2 { font-size: 72px; }
+  .outro .line { font-size: 34px; color: var(--muted); margin: 10px 0; }
+</style>
+</head>
+<body>
+<div id="root" data-composition-id="main" data-start="0" data-duration="78" data-width="1920" data-height="1080">
+  <div class="grid-bg"></div>
+
+  <div class="progress"><i id="progress"></i></div>
+  <div class="footer"><b>E-Ink English Learning Device</b> · 模型训练入门</div>
+
+  <!-- 1. title -->
+  <section id="s1" class="scene clip" data-start="0" data-duration="6" data-track-index="1" data-track-kind="graphics">
+    <div class="center">
+      <div class="kicker">Model Training · 01</div>
+      <div class="title">模型训练，<br><span class="thin">到底在做什么？</span></div>
+      <div class="subtitle">不推公式，用一条流水线看懂：<span class="accent">声音 → 梅尔图 → 小 CNN → 上板</span></div>
+      <div style="margin-top: 34px"><span class="pill"><span class="dot"></span> 面向 ESP32-S3 墨水屏单词机</span></div>
+    </div>
+  </section>
+
+  <!-- 2. audio -> mel -->
+  <section id="s2" class="scene clip" data-start="6" data-duration="10" data-track-index="2" data-track-kind="graphics">
+    <div class="kicker">Step 1 · 声音变成一张图</div>
+    <h2>先把 2 秒录音，变成 <span class="accent">40×64 的梅尔图</span></h2>
+    <p class="lead">横轴是时间，纵轴是频率；颜色越亮，能量越强。模型看的不是波形，而是这张“图”。</p>
+    <div class="row" style="margin-top: 46px; justify-content: center;">
+      <div class="card wave" id="wave">
+        <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+        <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+      </div>
+      <div class="arrow">→</div>
+      <div class="mel-wrap">
+        <div class="axis-y"><span>高频</span><span>中频</span><span>低频</span></div>
+        <div class="mel-grid"></div>
+        <div class="mel-label">40 Mel × 64 帧 · 16 kHz</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 3. labels -->
+  <section id="s3" class="scene clip" data-start="16" data-duration="10" data-track-index="3" data-track-kind="graphics">
+    <div class="kicker">Step 2 · 打标签</div>
+    <h2>同一张图，标成 <span class="accent">正确</span> 或 <span class="pink">错误</span></h2>
+    <p class="lead">模型不是“懂英语”，它是在学：这类条纹更像“读对了”，还是更像“读错了”。</p>
+    <div class="shots">
+      <div class="shot">
+        <img src="assets/tutorial_mels.png" alt="toy mel examples">
+        <div class="cap"><span>玩具梅尔图（仅演示）</span><span class="badge ok">label = 0 / 1</span></div>
+      </div>
+      <div class="card" style="width: 520px; align-self: center;">
+        <div style="font-size: 26px; line-height: 1.6; color: var(--muted);">
+          <div><span class="accent">正确</span>：音素基本准确、重音/节奏可接受</div>
+          <div style="margin-top: 14px"><span class="pink">错误</span>：明显替换、吞音、加音或重音错误</div>
+          <div style="margin-top: 22px; font-size: 21px;">真实项目：600 条左右，按说话人独立划分。</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 4. CNN -->
+  <section id="s4" class="scene clip" data-start="26" data-duration="12" data-track-index="4" data-track-kind="graphics">
+    <div class="kicker">Step 3 · 小 CNN</div>
+    <h2>几个小滤波器，在图上找 <span class="amber">局部条纹</span></h2>
+    <p class="lead">3×3 的卷积核滑过梅尔图，学“哪里的能量该强、哪里该弱”。模型很小，几千个参数就够。</p>
+    <div class="row" style="margin-top: 40px; justify-content: center; align-items: flex-start;">
+      <div class="cnn-stage">
+        <div class="cnn-grid"></div>
+        <div class="kernel" id="kernel"></div>
+      </div>
+      <div style="width: 420px; padding-top: 24px;">
+        <div class="card" style="padding: 26px 28px;">
+          <div style="font-size: 24px; color: var(--muted); line-height: 1.7;">
+            输入：<span class="accent">1×40×64</span><br>
+            卷积：<span class="accent">8 → 16 → 32</span> 通道<br>
+            池化：把图缩小，保留主要模式<br>
+            输出：<span class="amber">2 类概率</span>
+          </div>
+        </div>
+        <div style="margin-top: 22px; font-size: 22px; color: var(--muted);">
+          玩具模型只有 <span class="accent">1,330</span> 个参数；真实模型目标 3–8k。
+        </div>
+      </div>
+      <div class="card feature-panel" style="width: 230px; padding: 20px;">
+        <div style="font-size: 18px; color: var(--muted); margin-bottom: 12px;">feature map</div>
+        <div class="feature inline">
+          <i></i><i></i><i></i><i></i><i></i><i></i>
+          <i></i><i></i><i></i><i></i><i></i><i></i>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 5. training loop -->
+  <section id="s5" class="scene clip" data-start="38" data-duration="14" data-track-index="5" data-track-kind="graphics">
+    <div class="kicker">Step 4 · 训练循环</div>
+    <h2>训练 = <span class="accent">猜</span> → <span class="amber">算错</span> → <span class="pink">改</span></h2>
+    <p class="lead">每看一批图，模型先给预测；loss 衡量错得多厉害；反向传播把权重往“更对”的方向推一点。</p>
+    <div class="loop">
+      <div class="step" id="loop1"><b>输入</b><span>40×64 梅尔图</span></div>
+      <div class="sep">→</div>
+      <div class="step" id="loop2"><b>预测</b><span>正确 / 错误</span></div>
+      <div class="sep">→</div>
+      <div class="step" id="loop3"><b>loss</b><span>错得有多厉害</span></div>
+      <div class="sep">→</div>
+      <div class="step" id="loop4"><b>更新</b><span>改一点点权重</span></div>
+    </div>
+    <div class="loss-wrap">
+      <div class="loss-card">
+        <div class="num" id="loss-num">0.71 → 0.39</div>
+        <div class="cap">训练 loss 下降（玩具数据）</div>
+      </div>
+      <div class="loss-card">
+        <div class="num" id="acc-num">0.57 → 0.94</div>
+        <div class="cap">验证准确率上升（玩具数据）</div>
+      </div>
+      <svg class="loss-chart" viewBox="0 0 640 220" fill="none">
+        <path d="M30 30 H610 M30 110 H610 M30 190 H610" stroke="rgba(255,255,255,.10)" stroke-width="1"/>
+        <path id="loss-path" d="M30 46 C120 60 150 88 230 96 S360 128 430 142 S540 168 610 176"
+              stroke="#5eead4" stroke-width="6" stroke-linecap="round"
+              stroke-dasharray="1000" stroke-dashoffset="1000"/>
+      </svg>
+    </div>
+    <div style="margin-top: 18px; font-size: 20px; color: var(--muted);">15 轮只是玩具演示；真实训练通常几十到上百轮，并且要 early stopping。</div>
+  </section>
+
+  <!-- 6. speaker split -->
+  <section id="s6" class="scene clip" data-start="52" data-duration="10" data-track-index="6" data-track-kind="graphics">
+    <div class="kicker">Step 5 · 验证</div>
+    <h2>不要随机切样本，要 <span class="amber">按说话人切</span></h2>
+    <p class="lead">同一个人出现在训练集和测试集，模型会“认人”而不是“认发音”，准确率会虚高。</p>
+    <div class="split">
+      <div class="box">
+        <h3>训练集 · 6 人</h3>
+        <div class="people">
+          <div class="person">S1</div><div class="person">S2</div><div class="person">S3</div>
+          <div class="person">S4</div><div class="person">S5</div><div class="person">S6</div>
+        </div>
+        <div class="small" style="margin-top: 16px;">模型可以看这些人的录音</div>
+      </div>
+      <div class="box">
+        <h3>测试集 · 2 人</h3>
+        <div class="people">
+          <div class="person test">S7</div><div class="person test">S8</div>
+        </div>
+        <div class="small" style="margin-top: 16px;">训练时完全没见过；这才是“换人”后的真实水平</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 7. quant + board -->
+  <section id="s7" class="scene clip" data-start="62" data-duration="10" data-track-index="7" data-track-kind="graphics">
+    <div class="kicker">Step 6 · 量化 + 上板</div>
+    <h2>把 float32 压成 <span class="accent">int8</span>，再交给 TFLM</h2>
+    <p class="lead">模型变小、内存变少、推理更快；然后用 ESP32-S3 在本地跑，不依赖网络。</p>
+    <div class="quant">
+      <div class="qbox float">
+        <h3>float32</h3>
+        <div class="small" style="color: var(--muted); font-size: 20px;">32 bit / 权重</div>
+        <div class="bar"><i id="bar-float"></i></div>
+      </div>
+      <div class="arrow">→</div>
+      <div class="qbox int8">
+        <h3>int8</h3>
+        <div class="small" style="color: var(--muted); font-size: 20px;">8 bit / 权重</div>
+        <div class="bar"><i id="bar-int8"></i></div>
+      </div>
+      <div class="chip">
+        <span class="pin l t"></span><span class="pin l b"></span>
+        <span class="pin r t"></span><span class="pin r b"></span>
+        <div><b>ESP32-S3</b><span>TFLM 本地推理</span></div>
+      </div>
+    </div>
+    <div style="margin-top: 26px; font-size: 21px; color: var(--muted);">目标：模型几十 KB、推理 &lt;100 ms、arena &lt;64 KB；最终以实测为准。</div>
+  </section>
+
+  <!-- 8. outro -->
+  <section id="s8" class="scene clip outro" data-start="72" data-duration="6" data-track-index="8" data-track-kind="graphics">
+    <div class="center">
+      <div class="kicker">You don't need the math first</div>
+      <h2>你不需要先手推公式</h2>
+      <div class="line">先跑通 <span class="accent">20 条真实录音</span>，再看 loss 和验证集。</div>
+      <div class="line">数据质量 &gt; 网络结构；<span class="amber">按说话人验证</span> &gt; 随机切样本。</div>
+      <div style="margin-top: 30px"><span class="pill"><span class="dot"></span> 下一步：dataset.py + features.py + train.py</span></div>
+    </div>
+  </section>
+</div>
+
+<script src="assets/gsap.min.js"></script>
+<script>
+  const tl = gsap.timeline({ paused: true });
+
+  // progress bar
+  tl.fromTo("#progress", { scaleX: 0 }, { scaleX: 1, duration: 78, ease: "none" }, 0);
+
+  // scene 1
+  tl.fromTo("#s1", { opacity: 0 }, { opacity: 1, duration: 0.6 }, 0);
+  tl.fromTo("#s1 .title", { y: 34, opacity: 0 }, { y: 0, opacity: 1, duration: 0.9, ease: "power3.out" }, 0.15);
+  tl.fromTo("#s1 .subtitle, #s1 .pill", { y: 20, opacity: 0 }, { y: 0, opacity: 1, duration: 0.8, stagger: 0.12, ease: "power2.out" }, 0.55);
+  tl.to("#s1", { opacity: 0, duration: 0.4 }, 5.6);
+
+  // scene 2
+  tl.fromTo("#s2", { opacity: 0 }, { opacity: 1, duration: 0.5 }, 6);
+  tl.fromTo("#s2 .kicker, #s2 h2, #s2 .lead", { y: 22, opacity: 0 }, { y: 0, opacity: 1, duration: 0.7, stagger: 0.1, ease: "power2.out" }, 6.1);
+  tl.fromTo("#wave i", { scaleY: 0.12, opacity: 0.25 }, { scaleY: 1, opacity: 1, duration: 0.5, stagger: 0.035, ease: "power2.out" }, 6.7);
+  tl.fromTo("#s2 .mel-grid", { opacity: 0, scale: 0.96 }, { opacity: 1, scale: 1, duration: 0.8, ease: "power2.out" }, 7.4);
+  tl.fromTo("#s2 .mel-label, #s2 .axis-y", { opacity: 0 }, { opacity: 1, duration: 0.5 }, 8.0);
+  tl.to("#s2", { opacity: 0, duration: 0.4 }, 15.6);
+
+  // scene 3
+  tl.fromTo("#s3", { opacity: 0 }, { opacity: 1, duration: 0.5 }, 16);
+  tl.fromTo("#s3 .kicker, #s3 h2, #s3 .lead", { y: 22, opacity: 0 }, { y: 0, opacity: 1, duration: 0.7, stagger: 0.1, ease: "power2.out" }, 16.1);
+  tl.fromTo("#s3 .shot", { y: 28, opacity: 0 }, { y: 0, opacity: 1, duration: 0.8, ease: "power2.out" }, 16.8);
+  tl.fromTo("#s3 .card", { x: 26, opacity: 0 }, { x: 0, opacity: 1, duration: 0.8, ease: "power2.out" }, 17.2);
+  tl.to("#s3", { opacity: 0, duration: 0.4 }, 25.6);
+
+  // scene 4
+  tl.fromTo("#s4", { opacity: 0 }, { opacity: 1, duration: 0.5 }, 26);
+  tl.fromTo("#s4 .kicker, #s4 h2, #s4 .lead", { y: 22, opacity: 0 }, { y: 0, opacity: 1, duration: 0.7, stagger: 0.1, ease: "power2.out" }, 26.1);
+  tl.fromTo("#s4 .cnn-stage", { opacity: 0, scale: 0.97 }, { opacity: 1, scale: 1, duration: 0.8 }, 26.8);
+  tl.fromTo("#s4 .card", { x: 24, opacity: 0 }, { x: 0, opacity: 1, duration: 0.7, stagger: 0.12 }, 27.2);
+  // kernel walks across the grid (finite steps)
+  const kx = [0, 150, 300, 450, 600];
+  const ky = [0, 120, 240, 120, 0];
+  for (let i = 0; i < 5; i++) {
+    tl.to("#kernel", { x: kx[i], y: ky[i], duration: 1.0, ease: "power1.inOut" }, 28.0 + i * 1.1);
+  }
+  tl.fromTo("#s4 .feature i", { opacity: 0.1, scale: 0.8 }, { opacity: 1, scale: 1, duration: 0.5, stagger: 0.06, ease: "power2.out" }, 30.0);
+  tl.to("#s4", { opacity: 0, duration: 0.4 }, 37.6);
+
+  // scene 5
+  tl.fromTo("#s5", { opacity: 0 }, { opacity: 1, duration: 0.5 }, 38);
+  tl.fromTo("#s5 .kicker, #s5 h2, #s5 .lead", { y: 22, opacity: 0 }, { y: 0, opacity: 1, duration: 0.7, stagger: 0.1, ease: "power2.out" }, 38.1);
+  tl.fromTo("#s5 .step", { y: 20, opacity: 0 }, { y: 0, opacity: 1, duration: 0.6, stagger: 0.12, ease: "power2.out" }, 38.8);
+  tl.fromTo("#s5 .loss-card", { y: 20, opacity: 0 }, { y: 0, opacity: 1, duration: 0.7, stagger: 0.12 }, 39.6);
+  tl.fromTo("#loss-path", { strokeDashoffset: 1000 }, { strokeDashoffset: 0, duration: 6.2, ease: "power1.inOut" }, 40.2);
+  tl.fromTo("#s5 .loss-chart", { opacity: 0 }, { opacity: 1, duration: 0.6 }, 40.0);
+  // highlight loop steps in turn
+  for (let i = 0; i < 4; i++) {
+    tl.fromTo("#loop" + (i + 1), { borderColor: "rgba(255,255,255,.14)", backgroundColor: "#141b31" },
+      { borderColor: "#5eead4", backgroundColor: "#173042", duration: 0.35, yoyo: true, repeat: 1 }, 44.0 + i * 0.55);
+  }
+  tl.to("#s5", { opacity: 0, duration: 0.4 }, 51.6);
+
+  // scene 6
+  tl.fromTo("#s6", { opacity: 0 }, { opacity: 1, duration: 0.5 }, 52);
+  tl.fromTo("#s6 .kicker, #s6 h2, #s6 .lead", { y: 22, opacity: 0 }, { y: 0, opacity: 1, duration: 0.7, stagger: 0.1, ease: "power2.out" }, 52.1);
+  tl.fromTo("#s6 .box", { y: 24, opacity: 0 }, { y: 0, opacity: 1, duration: 0.7, stagger: 0.15 }, 52.8);
+  tl.fromTo("#s6 .person", { scale: 0.6, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.45, stagger: 0.06, ease: "back.out(1.6)" }, 53.2);
+  tl.to("#s6", { opacity: 0, duration: 0.4 }, 61.6);
+
+  // scene 7
+  tl.fromTo("#s7", { opacity: 0 }, { opacity: 1, duration: 0.5 }, 62);
+  tl.fromTo("#s7 .kicker, #s7 h2, #s7 .lead", { y: 22, opacity: 0 }, { y: 0, opacity: 1, duration: 0.7, stagger: 0.1, ease: "power2.out" }, 62.1);
+  tl.fromTo("#s7 .qbox", { y: 22, opacity: 0 }, { y: 0, opacity: 1, duration: 0.7, stagger: 0.12 }, 62.8);
+  tl.fromTo("#s7 .chip", { scale: 0.9, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.7, ease: "back.out(1.4)" }, 63.2);
+  tl.fromTo("#bar-float", { scaleX: 1 }, { scaleX: 1, duration: 0.1 }, 63.8);
+  tl.fromTo("#bar-int8", { scaleX: 0.25 }, { scaleX: 0.25, duration: 0.1 }, 63.8);
+  tl.to("#s7", { opacity: 0, duration: 0.4 }, 71.6);
+
+  // scene 8
+  tl.fromTo("#s8", { opacity: 0 }, { opacity: 1, duration: 0.5 }, 72);
+  tl.fromTo("#s8 .kicker, #s8 h2", { y: 22, opacity: 0 }, { y: 0, opacity: 1, duration: 0.7, stagger: 0.1 }, 72.1);
+  tl.fromTo("#s8 .line, #s8 .pill", { y: 16, opacity: 0 }, { y: 0, opacity: 1, duration: 0.6, stagger: 0.15 }, 72.8);
+
+  window.__timelines = window.__timelines || {};
+  window.__timelines["main"] = tl;
+</script>
+</body>
+</html>

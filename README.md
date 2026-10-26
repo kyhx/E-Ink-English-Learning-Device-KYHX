@@ -5,6 +5,8 @@
 （COM=CH343P 串口，USB=原生），板载 16 MB Flash / 8 MB Octal PSRAM；完整引脚见
 [`docs/board_pinmap.md`](docs/board_pinmap.md)。
 
+> 文档导航：[`docs/README.md`](docs/README.md)（硬件/数据/模型/论文/动画索引）。
+
 纸质单词书内容固定、检索不便，难以按遗忘规律安排复习，携带与翻阅成本较高；手机背单词 App
 虽然检索与调度能力强，但依赖高亮背光屏幕，长时间近距离使用易造成视觉疲劳，且功能高度依赖
 网络与云端服务，在教室、通勤、自习等场景下的专注度容易被消息推送打断。
@@ -89,6 +91,16 @@
 所选 7/8/9/10/11/12 均避开 strapping 脚（0/3/45/46）、USB-JTAG（19/20）、
 Flash/PSRAM（26–37）与 UART0（43/44）。注意 GPIO11/12 属 ADC2，若后续要用 ADC 需换脚。
 
+### 2.3 音频
+
+| 件 | 型号 | 接线 | 状态 |
+| --- | --- | --- | --- |
+| 麦克风 | **MS4030（INMP441 兼容）** | 3.3 V；BCLK=14 / WS=15 / SD=16；L/R=GND | 已分配，待接入实测 |
+| 功放 | **MAX98357A** | 5 V；BCLK=17 / LRC=18 / DIN=21 / SD=47（高=使能） | 已分配，待接入实测 |
+| 喇叭 | **3 W** | 接 MAX98357A 差分输出 +/− | 已分配，待接入实测 |
+
+> MAX98357A 的 `SD` 是**高电平使能**，不要按“空闲拉低”处理；喇叭任一端不能接 GND。3 W 是额定功率，阻抗以实物为准。
+
 ---
 
 ## 3. 目录结构
@@ -122,24 +134,37 @@ E-Ink-English-Learning-Device-KYHX/
 │       └── include/
 │           ├── epd_ssd1619a.h      # 对外 API 与引脚配置
 │           └── epd_lut_partial.h   # 70 字节 partial LUT（AGPL 来源，见第 8 节）
+├── data/
+│   ├── README.md                   # 数据目录约定
+│   ├── words.csv                   # 50 词 + 中文释义（提交）
+│   ├── collected/                  # 自采 WAV + labels.csv（本地，gitignore）
+│   └── reference/                  # Oxford 参考发音（本地，gitignore）
 ├── docs/
-│   ├── 交接文档.md                 # 现状 / 踩坑 / 下一步（新人先读这个）
+│   ├── README.md                   # 文档索引（从这里找）
+│   ├── 交接文档.md                 # 现状 / 踩坑 / 下一步（新人先读）
 │   ├── 技术方案.md                 # 驱动方案与寄存器时序细节
 │   ├── 局刷测试记录.md             # 全部刷新实验数据与波形分析
 │   ├── 真局部研究.md               # 70 行带状真局刷的边界与 datasheet 依据
 │   ├── HINK-E042A13-A0资料汇总.md  # 屏体资料汇总
 │   ├── M0测试记录.md               # 分区/按键/bench/E0 实测
 │   ├── board_pinmap.md             # YD-ESP32-S3 P1/P2 引脚与接线
+│   ├── data_collection.md          # 采集协议 / 600 条设计 / 标注口径
+│   ├── public_datasets.md          # 公开语料调研
+│   ├── public_test_speechocean762.md # 公开数据实测结果
 │   ├── toolchain.md                # Python/IDF/转换链/字体/串口
+│   ├── artifacts.md                # 模型/数据/视频生成物地图
+│   ├── thesis/                     # 开题报告正文 + 学校模板
+│   ├── animations/                 # 三个视频 + 索引
 │   ├── wiring.png / demo_preview.png / font_preview.png
 │   └── datasheets/                 # SSD1619A、GDEH042Z96 规格书
 └── tools/
-    ├── png_to_raw.py               # PNG → 15000 字节 1bpp 帧
-    ├── preview_demo.py             # 离线渲染屏显效果（无需硬件）
-    ├── gen_font.py / font5x7_ascii.py / gen_wiring.py
+    ├── README.md                   # 工具索引
     ├── setup/                      # 训练环境安装 + 全量验证
     ├── train/                      # requirements + onnx→tflite 冒烟
-    └── fonts/check_fonts.py        # IPA/中文字形覆盖检查
+    ├── pipeline/                   # 采集/标注 + 训练/量化/部署 + GUI
+    ├── reference/                  # Oxford 参考发音下载
+    ├── fonts/check_fonts.py        # IPA/中文字形覆盖检查
+    └── png_to_raw.py / preview_demo.py / gen_font.py 等旧脚本
 ```
 
 ---
@@ -195,6 +220,38 @@ bench selftest
 训练 / 模型转换工具链见 [`docs/toolchain.md`](docs/toolchain.md)：
 `pwsh -File tools/setup/install-train.ps1`，然后
 `.\.venv-train\Scripts\python.exe tools\train\smoke_convert.py`。
+
+完整训练/部署验证管线（音频→log-Mel→CNN→ONNX→TFLite int8→parity→C 数组）：
+
+```powershell
+.\.venv-train\Scripts\python.exe tools\pipeline\run.py --toy --epochs 20 --out build/pipeline_toy
+```
+
+图形界面：
+
+```powershell
+.\.venv-train\Scripts\python.exe tools\pipeline\gui.py
+```
+
+说明见 [`tools/pipeline/README.md`](tools/pipeline/README.md)。公开数据实测（speechocean762，2000 条）见 [`docs/public_test_speechocean762.md`](docs/public_test_speechocean762.md)。
+
+一次真实训练回放视频（74 秒，实际 loss/accuracy/混淆矩阵/样本/int8）：
+
+```text
+docs/animations/training-run/renders/training-run-explainer.mp4
+```
+
+CNN 内部可视化（44 秒，真实激活 + Grad-CAM）：
+
+```text
+docs/animations/cnn-visual/renders/cnn-visual-explainer.mp4
+```
+
+自采数据在 GUI 的 **采集 / 标注** 页完成，协议与 600 条设计见 [`docs/data_collection.md`](docs/data_collection.md)。采集后检查：
+
+```powershell
+.\.venv-train\Scripts\python.exe tools\pipeline\check_collected.py --data-dir data\collected\v1.0
+```
 
 > 本次分区表新增了 10 MB `storage`；首次启动 LittleFS 会自动格式化。若之前烧过旧分区表且挂载异常，执行一次 `idf.py erase-flash` 再烧录。
 >

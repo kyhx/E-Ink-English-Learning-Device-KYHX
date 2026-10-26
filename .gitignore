@@ -61,3 +61,13 @@ yarn.lock
 __pycache__/
 .pytest_cache/
 .ipynb_checkpoints/
+
+# HyperFrames render/check cache (keep the final MP4 and preview)
+docs/animations/*/.hyperframes/
+docs/animations/*/renders/frames*/
+
+# 自采语音/标注（本地数据，不进 Git）
+data/collected/
+
+# Google/Oxford 参考发音（版权音频，仅本地使用，不进 Git）
+data/reference/

@@ -50,8 +50,23 @@ under its own license:
   appear in the word bank and keep the OFL notice with any redistributed
   subset.
 
+## Animations
+
+- **GSAP 3.13.0** (`docs/animations/*/assets/gsap.min.js`) is used under the
+  GreenSock Standard "No Charge" License. Keep the copyright header and do not
+  redistribute the animations as a competing animation tool.
+- **HyperFrames 0.8.198** (Apache-2.0) is used as the local renderer; the CLI
+  is not redistributed in this repository.
+
 ## Audio / dataset
 
 Reference pronunciations and the recorded dataset are **not** covered by the
 code license. Record their source, speaker consent, and usage terms in
 `docs/M0测试记录.md` / the dataset README before publishing.
+
+- `speechocean762` (CC BY 4.0) is used for the public-data experiment; the
+  2000-clip subset is not committed. Cite Zhang et al., Interspeech 2021.
+- Oxford/Google pronunciation MP3/WAV files under `data/reference/` are for
+  local research only; they are **not** committed and must not be redistributed.
+- The self-recorded dataset under `data/collected/` is not committed; obtain
+  speaker consent and keep speaker IDs anonymized.
