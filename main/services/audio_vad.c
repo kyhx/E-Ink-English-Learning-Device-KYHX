@@ -1,10 +1,12 @@
 /*
  * audio_vad.c — frame energy + ZCR endpoint detector.
  *
- * Frame = 20 ms (320 samples), hop = 10 ms (160 samples).  The noise floor
- * is the 20th percentile of frame energies, so a continuous tone or a quiet
- * room still gets a sensible threshold.  Endpoints are padded by 100 ms and
- * speech shorter than 300 ms is rejected.
+ * 算法：
+ *   1. 20 ms 帧 / 10 ms hop，算每帧 RMS(dBFS) 和过零率；
+ *   2. 噪声底取所有帧能量的 20 分位，阈值 = max(噪声+8 dB, -55 dBFS)；
+ *   3. 连续两帧超过阈值才算语音起点/终点，避免单点毛刺；
+ *   4. 首尾各留 100 ms，有效语音 <300 ms 判无语音；
+ *   5. 平均 ZCR <0.008 视为低频哼声/直流建立，不当作单词。
  *
  * SPDX-License-Identifier: MIT
  */
@@ -28,6 +30,7 @@ static int cmp_float(const void *a, const void *b)
     return (fa > fb) - (fa < fb);
 }
 
+/* 一帧的 dBFS + ZCR；dBFS 以 int16 满量程 32768 为 0 dB。 */
 static float frame_db(const int16_t *x, size_t n, float *zcr_out)
 {
     if (n == 0) {
@@ -85,6 +88,7 @@ esp_err_t audio_vad_analyze(const int16_t *pcm, size_t frames,
     }
     memcpy(sorted, db, nframes * sizeof(float));
     qsort(sorted, nframes, sizeof(float), cmp_float);
+    /* 20 分位而不是最小值：避免把偶发极安静帧当成噪声底。 */
     size_t noise_idx = nframes / 5;                 /* 20th percentile */
     if (noise_idx >= nframes) {
         noise_idx = nframes - 1;
@@ -94,6 +98,7 @@ esp_err_t audio_vad_analyze(const int16_t *pcm, size_t frames,
 
     float threshold = out->noise_dbfs + 8.0f;
     if (threshold < -55.0f) {
+        /* 绝对下限：极安静房间里不要把微弱电噪声放大成语音。 */
         threshold = -55.0f;
     }
 
@@ -111,6 +116,7 @@ esp_err_t audio_vad_analyze(const int16_t *pcm, size_t frames,
 
     size_t first = nframes;
     size_t last = 0;
+    /* 起点/终点都要求“连续两帧”为语音，单帧 click 不算。 */
     for (size_t i = 0; i + 1 < nframes; i++) {
         if (speech[i] && speech[i + 1]) {
             first = i;
@@ -136,6 +142,7 @@ esp_err_t audio_vad_analyze(const int16_t *pcm, size_t frames,
         return ESP_OK;
     }
 
+    /* 端点各留 100 ms，避免把首尾辅音切掉；end 不能超过实际帧数。 */
     uint32_t start = (uint32_t)(first * VAD_HOP);
     uint32_t end = (uint32_t)(last * VAD_HOP + VAD_FRAME);
     if (start > PAD_SAMPLES) {

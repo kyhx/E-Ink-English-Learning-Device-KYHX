@@ -1,6 +1,10 @@
 /*
  * audio.c — initialize and query the M2 audio chain.
  *
+ * 初始化顺序：录音目录 -> I2S0 RX -> I2S1 TX。
+ * 录音目录失败只警告：已有 WAV 的播放不依赖目录创建。
+ * audio_busy() 给 bench/app 做粗粒度互斥判断。
+ *
  * SPDX-License-Identifier: MIT
  */
 #include "audio.h"

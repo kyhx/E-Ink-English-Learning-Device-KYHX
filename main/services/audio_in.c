@@ -1,6 +1,18 @@
 /*
  * audio_in.c — I2S0 RX capture task for the MS4030 (INMP441 compatible).
  *
+ * 数据路径：
+ *   MS4030 --I2S0--> 32-bit DMA --> 取高 16 bit --> 数字增益
+ *          --> PSRAM PCM 缓冲 --> audio_in_stop() 交给调用者
+ *
+ * 关键设计：
+ *   1. 采集放在独立任务里，优先级高于 UI；这样 346 ms 的墨水屏带状刷新
+ *      不会让 I2S DMA 溢出。
+ *   2. 上电后先丢弃 100 ms。实测 MS4030 上电/直流建立会在前 100 ms 产生
+ *      约 29k 的瞬态，不丢弃会被 VAD 误判成语音。
+ *   3. 只申请一块 PSRAM，录完把指针交给调用者；不要在任务里 free，否则
+ *      UI 还没保存就已经释放。
+ *
  * SPDX-License-Identifier: MIT
  */
 #include "audio_in.h"
@@ -26,26 +38,30 @@
 
 static const char *TAG = "audio_in";
 
-#define REC_CHUNK_FRAMES 160       /* 10 ms at 16 kHz */
-#define REC_TASK_STACK   4096
-#define SETTLE_SAMPLES   1600   /* 100 ms: MS4030 power-on / DC settling */
+#define REC_CHUNK_FRAMES 160       /* 10 ms @ 16 kHz；一次读一小块，便于刷新电平 */
+#define REC_TASK_STACK   4096      /* 只做整数搬运和统计，4 KB 足够 */
+#define SETTLE_SAMPLES   1600      /* 100 ms：MS4030 上电/直流建立，必须丢弃 */
 
+/*
+ * 录音上下文。lock 保护 start/stop 的生命周期；done 是任务完成信号；
+ * active/done_flag/stop_req/level 是跨任务可见的 volatile 标志。
+ */
 typedef struct {
     i2s_chan_handle_t rx;
     SemaphoreHandle_t lock;
     SemaphoreHandle_t done;
-    int16_t *pcm;
-    size_t cap;
-    size_t count;
+    int16_t *pcm;                  /* PSRAM 缓冲，所有权在 stop 时转移 */
+    size_t cap;                    /* 缓冲总样本数（含 settle 余量） */
+    size_t count;                  /* 已写入的有效样本数 */
 
-    volatile bool active;
-    volatile bool done_flag;
-    volatile bool stop_req;
-    volatile int level_permille;
-    volatile uint32_t elapsed_ms;
+    volatile bool active;          /* start 已成功，等待 stop */
+    volatile bool done_flag;       /* 采集任务已结束 */
+    volatile bool stop_req;        /* 请求提前结束 */
+    volatile int level_permille;   /* 最近 10 ms 的峰值，0..1000 */
+    volatile uint32_t elapsed_ms;  /* 有效样本对应的时长 */
 
-    int64_t start_us;
-    int64_t first_us;
+    int64_t start_us;              /* 调用 start 的时刻 */
+    int64_t first_us;              /* 第一个有效样本的时刻 */
     uint32_t requested_ms;
     audio_capture_stats_t stats;
 } audio_in_ctx_t;
@@ -53,6 +69,7 @@ typedef struct {
 static audio_in_ctx_t s_in;
 static bool s_inited;
 
+/* GPIO38 可选：接 MOS/负载开关时控制 MS4030 的 3.3 V；未接则宏为 -1。 */
 static void mic_power(bool on)
 {
 #if CONFIG_APP_AUDIO_MIC_POWER_GPIO >= 0
@@ -62,6 +79,7 @@ static void mic_power(bool on)
 #endif
 }
 
+/* 统计峰值/RMS/DC/削顶；RMS 先减 DC，避免直流偏置把响度算高。 */
 static void fill_stats(void)
 {
     size_t n = s_in.count;
@@ -100,6 +118,13 @@ static void fill_stats(void)
     s_in.stats.clipped = clipped;
 }
 
+/*
+ * 采集任务：
+ *   - i2s_channel_read 每次拿 10 ms 的 32-bit 原始样本；
+ *   - 前 SETTLE_SAMPLES 个样本只计数、不写入；
+ *   - 之后右移 16 bit 得到 16-bit PCM，乘数字增益并做饱和；
+ *   - 写满 requested_ms 后关 I2S、关麦克风电源、发完成信号。
+ */
 static void audio_in_task(void *arg)
 {
     (void)arg;
@@ -123,6 +148,7 @@ static void audio_in_task(void *arg)
             break;
         }
         if (bytes == 0) {
+            /* 没有数据时主动让出 CPU，避免空转饿死 bench/UI 任务。 */
             vTaskDelay(pdMS_TO_TICKS(1));
             continue;
         }
@@ -136,8 +162,9 @@ static void audio_in_task(void *arg)
             if (s_in.first_us == 0) {
                 s_in.first_us = esp_timer_get_time();
             }
-            /* INMP441: 24 valid bits, MSB first, left aligned in a 32-bit
-             * slot.  Taking bits 31..16 gives the top 16 bits. */
+            /* INMP441/MS4030：24 位有效数据，MSB 在前，左对齐在 32-bit
+             * 槽里。右移 16 位就是取高 16 位；不要按低 16 位读。
+             */
             int32_t v = raw[i] >> 16;
             v = (v * CONFIG_APP_AUDIO_MIC_GAIN_X100) / 100;
             if (v > 32767) {
@@ -194,6 +221,9 @@ esp_err_t audio_in_init(void)
     mic_power(false);
 #endif
 
+    /* 8 个 DMA 描述符 × 256 帧 ≈ 128 ms 余量；采集任务按 10 ms 读，
+     * 即使 UI 短暂占用 CPU 也不会立刻 overrun。
+     */
     i2s_chan_config_t chan_cfg = I2S_CHANNEL_DEFAULT_CONFIG(I2S_NUM_0,
                                                             I2S_ROLE_MASTER);
     chan_cfg.dma_desc_num = 8;
@@ -206,6 +236,9 @@ esp_err_t audio_in_init(void)
         return err;
     }
 
+    /* Philips I2S、32-bit 槽、单声道左槽；INMP441 的 L/R 接地即左声道。
+     * ws_width=16 与 TFLM 的 micro_speech 示例一致，实测可正常收数。
+     */
     i2s_std_slot_config_t slot_cfg =
         I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG(I2S_DATA_BIT_WIDTH_32BIT,
                                             I2S_SLOT_MODE_MONO);
@@ -218,10 +251,10 @@ esp_err_t audio_in_init(void)
         .clk_cfg = I2S_STD_CLK_DEFAULT_CONFIG(AUDIO_SAMPLE_RATE),
         .slot_cfg = slot_cfg,
         .gpio_cfg = {
-            .mclk = I2S_GPIO_UNUSED,
+            .mclk = I2S_GPIO_UNUSED,   /* INMP441 不需要 MCLK */
             .bclk = BOARD_MIC_BCLK_GPIO,
             .ws = BOARD_MIC_WS_GPIO,
-            .dout = I2S_GPIO_UNUSED,
+            .dout = I2S_GPIO_UNUSED,   /* 只收不发 */
             .din = BOARD_MIC_SD_GPIO,
             .invert_flags = {
                 .mclk_inv = false,
@@ -247,6 +280,10 @@ esp_err_t audio_in_init(void)
     return ESP_OK;
 }
 
+/*
+ * 启动一次采集。这个函数只做“申请缓冲 + 开外设 + 建任务”，立即返回；
+ * 调用者之后用 audio_in_is_done()/audio_in_stop() 收割。
+ */
 esp_err_t audio_in_start(uint32_t ms)
 {
     if (!s_inited) {
@@ -268,6 +305,7 @@ esp_err_t audio_in_start(uint32_t ms)
         return ESP_ERR_INVALID_STATE;
     }
 
+    /* 多留 settle + 100 ms 余量，但只写 requested_ms 的有效样本。 */
     size_t cap = (size_t)((uint64_t)ms * AUDIO_SAMPLE_RATE / 1000) +
                  SETTLE_SAMPLES + 1600;
     int16_t *pcm = heap_caps_malloc(cap * sizeof(int16_t),
@@ -294,7 +332,7 @@ esp_err_t audio_in_start(uint32_t ms)
     memset(&s_in.stats, 0, sizeof(s_in.stats));
 
     mic_power(true);
-    vTaskDelay(pdMS_TO_TICKS(10));     /* MS4030 power-on / settle */
+    vTaskDelay(pdMS_TO_TICKS(10));     /* MS4030 供电建立，之后任务里再丢 100 ms */
 
     esp_err_t err = i2s_channel_enable(s_in.rx);
     if (err != ESP_OK) {
@@ -326,6 +364,7 @@ esp_err_t audio_in_start(uint32_t ms)
     return ESP_OK;
 }
 
+/* active 在 stop 之前一直为 true；done_flag 用于区分“正在录/已录完”。 */
 bool audio_in_is_active(void)
 {
     return s_in.active && !s_in.done_flag;
@@ -347,6 +386,13 @@ int audio_in_level_permille(void)
     return v < 0 ? 0 : (v > 1000 ? 1000 : v);
 }
 
+/*
+ * 等待任务结束并移交 PCM 缓冲。正常调用时任务已经 done；如果调用者想
+ * 提前停止（例如 UI 取消），设置 stop_req 再等 3 s。
+ *
+ * 注意：完成后必须把 done 信号量取空，否则下一次录音会立刻看到上一次的
+ * 完成信号，误以为任务已经结束。
+ */
 esp_err_t audio_in_stop(int16_t **pcm, size_t *frames,
                         audio_capture_stats_t *stats)
 {
@@ -373,8 +419,7 @@ esp_err_t audio_in_stop(int16_t **pcm, size_t *frames,
             return ESP_ERR_TIMEOUT;
         }
     } else {
-        /* The task already gave the semaphore; drain it so the next recording
-         * does not see a stale completion token. */
+        /* 任务已经给过信号量；这里 drain 掉，避免下一次 start 误判。 */
         (void)xSemaphoreTake(s_in.done, 0);
     }
 

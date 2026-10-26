@@ -1,6 +1,12 @@
 /*
  * audio_analysis.c — Goertzel tone scan + basic level statistics.
  *
+ * 用途：`bench audio gen/rec/analyze` 检查 1 kHz 链路。
+ *   - RMS 先减 DC，再把 int16 满量程 32768 当作 0 dBFS；
+ *   - 在 700..1300 Hz 以 5 Hz 步进做 Goertzel，找最强 bin；
+ *   - 由 |X| 反推正弦幅度，算 tone dBFS 与 SNR；
+ *   - 噪声底/弱峰不报 tone，避免把环境噪声当 1 kHz。
+ *
  * SPDX-License-Identifier: MIT
  */
 #include "audio_analysis.h"
@@ -14,6 +20,10 @@
 #define M_PI 3.14159265358979323846
 #endif
 
+/*
+ * Goertzel：只算一个频点的 DFT，比整段 FFT 省内存/代码。
+ * 返回 |X|^2 的近似值；weighted_energy 可选返回加窗能量。
+ */
 static float goertzel_power(const int16_t *pcm, size_t n, float freq,
                             float *weighted_energy)
 {
@@ -47,6 +57,7 @@ void audio_measure(const int16_t *pcm, size_t frames, audio_measure_t *out)
         return;
     }
 
+    /* 第一遍：DC / 峰值 / 削顶（|x| >= 32700 视为接近满量程）。 */
     double sum = 0.0;
     int32_t peak = 0;
     uint32_t clipped = 0;
@@ -71,6 +82,7 @@ void audio_measure(const int16_t *pcm, size_t frames, audio_measure_t *out)
         double v = (double)pcm[i] - out->dc;
         energy += v * v;
     }
+    /* RMS 用去 DC 后的能量；20log10(rms/32768) 即 dBFS。 */
     double rms = sqrt(energy / (double)frames);
     out->rms_dbfs = (float)(20.0 * log10(rms / 32768.0 + 1e-12));
 
@@ -90,7 +102,7 @@ void audio_measure(const int16_t *pcm, size_t frames, audio_measure_t *out)
         return;
     }
 
-    /* Rectangular window: |X| at the bin is A*N/2. */
+    /* 矩形窗下 |X| = A*N/2，所以 A = 2*sqrt(power)/N。 */
     double amp = 2.0 * sqrt((double)best_power) / (double)frames;
     double tone_ms = amp * amp / 2.0;
     double total_ms = energy / (double)frames;

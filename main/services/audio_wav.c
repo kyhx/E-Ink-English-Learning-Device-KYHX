@@ -1,6 +1,16 @@
 /*
  * audio_wav.c — minimal RIFF/WAVE reader and mono PCM16 writer.
  *
+ * 固件只处理 16 kHz / 16-bit PCM：
+ *   - 写：44 B 标准 RIFF 头 + little-endian PCM；
+ *   - 读：解析任意顺序的 fmt/data chunk，stereo 下混成 mono；
+ *   - 板子没有 RTC，M2 用编译时间临时播种时钟，M7 再接 SNTP。
+ *
+ * 注意字节序：WAV 的 PCM 是 little-endian；串口 dump 用 %04x 输出的是
+ * “数值的十六进制文本”（看起来像 big-endian），PC 工具下载时必须把
+ * 每 4 个 hex 字符还原成 int16 再按 little-endian 写入，不能直接
+ * bytes.fromhex()。
+ *
  * SPDX-License-Identifier: MIT
  */
 #include "audio_wav.h"
@@ -40,6 +50,11 @@ static int month_index(const char *m)
     return -1;
 }
 
+/*
+ * 没有 RTC/SNTP 时，用 __DATE__/__TIME__ 把系统时间设到编译时刻。
+ * 这只能保证文件名“看起来像日期”，不是真实时间；M7 同步后要覆盖。
+ * 只在时间还停在 1970 附近时播种，避免覆盖 SNTP 已经校准的时间。
+ */
 void audio_wav_seed_clock(void)
 {
     time_t now = time(NULL);
@@ -126,6 +141,7 @@ esp_err_t audio_wav_init(void)
 
 /* ---------------------------------------------------------------- writer */
 
+/* 写 44 B 头 + PCM16；写完 fflush + fsync，尽量保证掉电后文件完整。 */
 esp_err_t audio_wav_write(const char *path, const int16_t *pcm, size_t frames)
 {
     if (path == NULL || pcm == NULL || frames == 0) {
@@ -178,6 +194,12 @@ esp_err_t audio_wav_write(const char *path, const int16_t *pcm, size_t frames)
 
 /* ---------------------------------------------------------------- reader */
 
+/*
+ * 只解析 chunk 头，不加载 payload：
+ *   RIFF/WAVE 之后可能有 fmt、LIST、fact、data 等任意顺序的 chunk；
+ *   遇到 fmt 读 16 B 格式，遇到 data 记下偏移和长度。
+ * 只接受 PCM(1)、16-bit、mono/stereo。
+ */
 static esp_err_t parse_wav(FILE *f, wav_info_t *info)
 {
     uint8_t hdr[12];
@@ -274,6 +296,10 @@ esp_err_t audio_wav_info(const char *path, wav_info_t *info)
     return err;
 }
 
+/*
+ * 把整个 WAV 读进 PSRAM，返回 mono PCM；stereo 用 (L+R)/2 下混。
+ * 只接受 16 kHz，避免在设备上做重采样；参考音频在 PC 侧已转 16 kHz。
+ */
 esp_err_t audio_wav_read(const char *path, int16_t **pcm, size_t *frames)
 {
     if (path == NULL || pcm == NULL || frames == NULL) {
@@ -341,6 +367,7 @@ esp_err_t audio_wav_read(const char *path, int16_t **pcm, size_t *frames)
             size_t got = fread(interleaved, sizeof(int16_t), want * 2, f);
             size_t pairs = got / 2;
             for (size_t i = 0; i < pairs; i++) {
+                /* 简单平均；两声道同相时不会削顶，反相时也不会放大。 */
                 int32_t mix = (int32_t)interleaved[i * 2] +
                               interleaved[i * 2 + 1];
                 out[done + i] = (int16_t)(mix / 2);
@@ -367,6 +394,10 @@ esp_err_t audio_wav_read(const char *path, int16_t **pcm, size_t *frames)
 
 /* ----------------------------------------------------------------- paths */
 
+/*
+ * 生成录音文件名：rec_YYYYmmdd_HHMMSS_mmm.wav。
+ * 毫秒后缀保证同一秒内连续录音不会互相覆盖；时间未校准时用 boot 计数。
+ */
 esp_err_t audio_wav_make_rec_path(char *path, size_t path_len)
 {
     if (path == NULL || path_len < 48) {
@@ -396,6 +427,7 @@ esp_err_t audio_wav_make_rec_path(char *path, size_t path_len)
     return ESP_OK;
 }
 
+/* 只扫 rec_*.wav，按文件名字典序取最大（文件名时间戳天然可排序）。 */
 esp_err_t audio_wav_latest(char *path, size_t path_len)
 {
     if (path == NULL || path_len < 32) {

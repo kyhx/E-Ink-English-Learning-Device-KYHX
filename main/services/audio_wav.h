@@ -6,6 +6,9 @@
  * clock is seeded from the firmware build time; M7 replaces it with
  * SNTP / browser time.
  *
+ * WAV payload 是 little-endian PCM16；`bench audio dump` 输出的是数值的
+ * 十六进制文本，PC 端要按 int16 解析后再以小端写入（见 tools/audio）。
+ *
  * SPDX-License-Identifier: MIT
  */
 #ifndef AUDIO_WAV_H

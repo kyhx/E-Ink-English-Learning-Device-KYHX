@@ -1,10 +1,13 @@
 /*
  * app_state.c — M2 home screen, recording feedback and playback.
  *
- * The audio capture task runs independently of this loop, so the 346 ms
- * band refresh never causes an I2S overrun.  RECORD captures 2 s, runs VAD,
- * trims 100 ms of padding, writes a WAV and shows the result.  PLAY replays
- * the latest recording.
+ * 交互：
+ *   RECORD 短按 -> 录 2 s -> VAD 裁剪 -> 写 WAV -> 显示 SAVED/NO SPEECH
+ *   PLAY   短按 -> 播最新录音 -> 显示 PLAYING/DONE
+ *   PREV/NEXT/SYNC 只回显键名，留给 M1 页面管理器。
+ *
+ * 采集任务独立于本循环，所以 500 ms 更新一次电平条、每次 346 ms 的
+ * 带状刷新不会造成 I2S overrun。播放是同步阻塞的，播放期间按键会排队。
  *
  * SPDX-License-Identifier: MIT
  */
@@ -31,9 +34,10 @@
 
 static const char *TAG = "app";
 
+/* 高频变化都压进这一条 70 行带；整屏只在进入页面时刷一次。 */
 #define HOME_BAND_Y0 95
 #define HOME_BAND_Y1 164
-#define UI_UPDATE_MS 500
+#define UI_UPDATE_MS 500          /* 录音电平条 2 Hz，远低于 346 ms/次的刷新上限 */
 
 static uint8_t s_base[EPD_FRAME_BYTES];
 static uint8_t s_frame[EPD_FRAME_BYTES];
@@ -48,6 +52,7 @@ static void draw_centered_scaled(uint8_t *fb, int y, const char *text, int scale
     epd_fb_text_scaled(fb, (EPD_WIDTH - w) / 2, y, text, 0, scale);
 }
 
+/* 底图只画一次：标题/状态行/页脚；后续都在这张底图上叠字。 */
 static void render_home_base(void)
 {
     epd_fb_clear(s_base, 1);
@@ -67,6 +72,7 @@ static void show_band_text(const char *text, int scale)
     epd_band_update(s_frame, HOME_BAND_Y0, HOME_BAND_Y1, 5000);
 }
 
+/* 录音中画面：已录时长 + 电平条；只刷 95..164 带。 */
 static void show_record_screen(uint32_t elapsed_ms, int level_permille)
 {
     memcpy(s_frame, s_base, EPD_FRAME_BYTES);
@@ -101,6 +107,10 @@ static void refresh_last_path(void)
     }
 }
 
+/*
+ * VAD 成功才写文件；裁剪后只保存 speech_start..speech_end。
+ * 若削顶样本超过总样本的 0.5%，界面提示 CLIP 而不是 SAVED。
+ */
 static void save_recording(int16_t *pcm, size_t frames,
                            const audio_capture_stats_t *stats)
 {
@@ -155,6 +165,7 @@ static void save_recording(int16_t *pcm, size_t frames,
              vad.snr_db, stats ? (unsigned)stats->clipped : 0);
 }
 
+/* 录音与播放互斥；启动失败只提示 AUDIO ERR，不改变 s_recording。 */
 static void start_recording(void)
 {
     if (s_recording || audio_out_is_playing()) {
@@ -171,6 +182,7 @@ static void start_recording(void)
     ESP_LOGI(TAG, "recording %d ms", CONFIG_APP_AUDIO_RECORD_MS);
 }
 
+/* 任务已 done，stop 只做收尾/移交；随后 VAD+写盘。 */
 static void finish_recording(void)
 {
     int16_t *pcm = NULL;
@@ -196,6 +208,7 @@ static void finish_recording(void)
     audio_in_free(pcm);
 }
 
+/* 播放最新文件；播放是阻塞的，PLAYING 先刷出去再开始写 I2S。 */
 static void play_latest(void)
 {
     if (s_recording || audio_out_is_playing()) {
@@ -260,6 +273,7 @@ void app_state_run(void)
             handle_event(ev);
         }
 
+        /* 录音期间每 500 ms 刷一次电平；done 后立即收尾。 */
         if (s_recording) {
             if (audio_in_is_done()) {
                 finish_recording();

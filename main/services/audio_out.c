@@ -1,6 +1,17 @@
 /*
  * audio_out.c — I2S1 TX + MAX98357A enable sequencing.
  *
+ * 播放路径：
+ *   WAV/PCM(mono 16-bit) --> 数字增益/限幅 --> 复制成 L/R
+ *   --> I2S1 16-bit stereo --> MAX98357A --> 差分喇叭
+ *
+ * 为什么是“stereo 双写”：MAX98357A 的 SD/MODE 电压决定输出左/右/混合；
+ * 本板 SD 直接由 GPIO47 拉高，按数据手册会选左声道。把 mono 同时写进
+ * L/R 后，无论模块最终选左还是右都不会丢音。
+ *
+ * 开关机时序：SD 先拉高 10 ms，再开 I2S；播放前后各写 20 ms 静音；
+ * 结束后先关 I2S，等 50 ms 再拉低 SD，避免 pop。
+ *
  * SPDX-License-Identifier: MIT
  */
 #include "audio_out.h"
@@ -29,15 +40,16 @@
 
 static const char *TAG = "audio_out";
 
-#define OUT_CHUNK_FRAMES 256
-#define OUT_TIMEOUT_MS   100
+#define OUT_CHUNK_FRAMES 256      /* 16 ms @ 16 kHz，一次写一块，避免大临时数组 */
+#define OUT_TIMEOUT_MS   100      /* 单次 DMA 写超时；256 帧正常应在 16 ms 内完成 */
 
 static i2s_chan_handle_t s_tx;
 static volatile bool s_playing;
 static bool s_inited;
 static uint16_t s_gain_x100 = CONFIG_APP_AUDIO_PLAY_GAIN_X100;
-static uint32_t s_last_clipped;
+static uint32_t s_last_clipped;   /* 本次播放被限幅的样本数，用于日志 */
 
+/* MAX98357A 的 SD 在本板是高电平使能；配置宏允许改成低有效。 */
 static void amp_enable(bool on)
 {
 #if CONFIG_APP_AUDIO_AMP_SD_ACTIVE_HIGH
@@ -47,6 +59,7 @@ static void amp_enable(bool on)
 #endif
 }
 
+/* 写 ms 毫秒的 L/R 静音，用于开头/结尾防 pop。 */
 static esp_err_t write_silence(uint32_t ms)
 {
     int16_t zeros[OUT_CHUNK_FRAMES * 2] = {0};
@@ -64,6 +77,11 @@ static esp_err_t write_silence(uint32_t ms)
     return ESP_OK;
 }
 
+/*
+ * 把 mono PCM 乘增益后复制到 L/R 两个槽。
+ * 限幅是硬 clamp：超过 int16 就钉在 ±32767，并累计 s_last_clipped；
+ * 播放结束会打一条 warning，提醒把 bench audio gain 调低。
+ */
 static esp_err_t write_pcm(const int16_t *pcm, size_t frames)
 {
     int16_t stereo[OUT_CHUNK_FRAMES * 2];
@@ -119,6 +137,7 @@ esp_err_t audio_out_init(void)
     }
     amp_enable(false);
 
+    /* 8 × 256 帧的 TX DMA；16-bit stereo 下 BCLK = 16k × 16 × 2 = 512 kHz。 */
     i2s_chan_config_t chan_cfg = I2S_CHANNEL_DEFAULT_CONFIG(I2S_NUM_1,
                                                             I2S_ROLE_MASTER);
     chan_cfg.dma_desc_num = 8;
@@ -178,6 +197,7 @@ bool audio_out_is_playing(void)
 
 esp_err_t audio_out_set_gain_x100(uint16_t gain_x100)
 {
+    /* 50..800 覆盖 -6 dB 到 +18 dB；再大只会让限幅更严重。 */
     if (gain_x100 < 50 || gain_x100 > 800) {
         return ESP_ERR_INVALID_ARG;
     }
@@ -191,6 +211,10 @@ uint16_t audio_out_get_gain_x100(void)
     return s_gain_x100;
 }
 
+/*
+ * 同步播放一段 PCM：调用者要等到整段写完才返回。
+ * 互锁：录音中或已有播放时直接拒绝，避免全双工把 RX 卡死/产生啸叫。
+ */
 esp_err_t audio_out_play_pcm(const int16_t *pcm, size_t frames)
 {
     if (!s_inited) {
@@ -258,6 +282,7 @@ esp_err_t audio_out_play_wav(const char *path)
     return err;
 }
 
+/* 生成一段正弦测试音；幅度是峰值，不是 dBFS。 */
 static esp_err_t tone_common(uint32_t freq_hz, uint32_t ms, uint16_t amplitude)
 {
     if (freq_hz == 0 || ms == 0 || amplitude == 0) {

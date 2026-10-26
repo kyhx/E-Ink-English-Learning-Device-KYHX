@@ -1,8 +1,9 @@
 /*
- * bench.c — serial console commands for M0 bring-up.
+ * bench.c — serial console commands for board bring-up.
  *
- * Runs in its own REPL task; display commands must not be called while the
- * app is in the middle of a refresh (M0 has no display mutex yet).
+ * 运行在 esp_console 自己的 REPL 任务里；M0 还没有显示互斥锁，所以
+ * display 命令不要和 app 同时刷新。M2 新增 audio 子命令，覆盖：
+ *   info/rec/play/tone/gain/gen/dump/list/analyze/soak/selftest
  *
  * SPDX-License-Identifier: MIT
  */
@@ -231,6 +232,18 @@ static int cmd_bench_selftest(void)
 
 /* --------------------------------------------------------------- audio */
 
+/*
+ * audio 子命令分工：
+ *   info    只读状态，不碰 I2S；
+ *   rec     录一段并打印峰值/RMS/VAD，是否顺便播放由第二个参数决定；
+ *   play    播设备上的 WAV，默认播最新；
+ *   tone    生成 1 kHz 正弦，绕过 WAV 文件，专门测功放；
+ *   gain    运行时改数字增益（50..800），不写 NVS，重启恢复默认；
+ *   gen     在设备内生成 1 kHz WAV，用于验证分析算法本身；
+ *   dump    把 PCM 以 16 进制文本吐到串口，PC 工具再转 WAV；
+ *   soak    连续录 N 条并逐条校验文件完整性；
+ *   selftest 串起 info + tone + rec，不验证喇叭是否真的出声。
+ */
 static int cmd_bench_audio_info(void)
 {
     printf("\n== bench audio info ==\n");
@@ -270,10 +283,10 @@ static int cmd_bench_audio_info(void)
     return 0;
 }
 
+/* 录一段：轮询电平直到 done，再 stop/分析/写 WAV；可选立即回放。 */
 static int cmd_bench_audio_rec(int ms, bool play)
 {
-    if (ms < AUDIO_RECORD_MS_MIN || ms > AUDIO_RECORD_MS_MAX) {
-        printf("usage: bench audio rec [ms] [play]  (%d..%d)\n",
+    if (ms < AUDIO_RECORD_MS_MIN || ms > AUDIO_RECORD_MS_MAX) {        printf("usage: bench audio rec [ms] [play]  (%d..%d)\n",
                AUDIO_RECORD_MS_MIN, AUDIO_RECORD_MS_MAX);
         return 1;
     }
@@ -395,6 +408,7 @@ static int cmd_bench_audio_tone(int ms)
     return err == ESP_OK ? 0 : 1;
 }
 
+/* 生成 1 kHz WAV 并用同一套 audio_measure 分析，验证算法而非硬件。 */
 static int cmd_bench_audio_gen(int ms)
 {
     if (ms < 100 || ms > 5000) {
@@ -428,6 +442,8 @@ static int cmd_bench_audio_gen(int ms)
     return err == ESP_OK ? 0 : 1;
 }
 
+/* dump 用 %04x 输出“数值”的十六进制；PC 端必须按 int16 解析后
+ * little-endian 写 WAV，不能直接 bytes.fromhex()。 */
 static int cmd_bench_audio_dump(const char *path)
 {
     if (path == NULL) {
@@ -469,6 +485,7 @@ static int cmd_bench_audio_gain(int argc, char **argv)
     return 0;
 }
 
+/* 列出 /storage/rec 下的 WAV，逐个读头显示时长/大小。 */
 static int cmd_bench_audio_list(void)
 {
     DIR *dir = opendir(AUDIO_REC_DIR);
@@ -507,6 +524,7 @@ static int cmd_bench_audio_list(void)
     return count > 0 ? 0 : 1;
 }
 
+/* 对已有 WAV 做电平/1 kHz/VAD 分析，不播放。 */
 static int cmd_bench_audio_analyze(const char *path)
 {
     char latest[160];
@@ -541,6 +559,8 @@ static int cmd_bench_audio_analyze(const char *path)
     return 0;
 }
 
+/* soak：每条 1 s，录完立刻用 audio_wav_info 重新读头校验帧数，避免
+ * “写成功但文件损坏”被漏掉。 */
 static int cmd_bench_audio_soak(int n)
 {
     if (n < 1 || n > 30) {
@@ -602,6 +622,7 @@ static int cmd_bench_audio_soak(int n)
     return ok == n ? 0 : 1;
 }
 
+/* selftest 只覆盖软件链；喇叭是否出声要用 phone 1 kHz + analyze 或人耳。 */
 static int cmd_bench_audio_selftest(void)
 {
     printf("\n===== audio selftest =====\n");
