@@ -607,6 +607,7 @@ u0001,S01,M,12,1,5,s01_w012_c_01.wav,1760000000,1,train
 - [x] 录放互锁：播放时关麦克风，录音时关功放；不做全双工（duplex 诊断已移除）。
 - [x] VAD：短时能量 + 过零率；噪声底估计；去掉首尾静音，保留 100 ms；有效语音 <0.3 s 提示“未检测到语音”；ZCR<0.008 拒绝电源哼声。
 - [x] UI：录音中电平条（band 内 500 ms 节流，346 ms/次）、SAVED/NO SPEECH、PLAY=DONE。
+- [x] 上电清屏：POWERON/EXT/BROWNOUT 后 全白→全黑→底图→重载 LUT，实测 709/710/710 ms，共 2.14 s；`CONFIG_APP_BOOT_CLEAN` 可关。
 - [x] 算法自测：`bench audio gen` 生成 1 kHz 并用 Goertzel 检测 1000 Hz/−17.8 dBFS；`bench audio rec/play` 可用。
 - [x] 连续录 20 条，检查文件完整、存储余量：20/20，无削顶；100 条 2 s 约 6.1 MiB，可存下。
 - [ ] 声学测试：手机播 1 kHz + `bench audio rec/analyze`；duplex 诊断曾 0/1，且 TX/RX 同时开时 RX 停住，已移除。需查 5 V、SD、喇叭差分接线。

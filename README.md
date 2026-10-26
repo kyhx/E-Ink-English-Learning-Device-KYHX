@@ -36,6 +36,7 @@
 | **M2 WAV / VAD** | **WAV 写入 LittleFS；VAD 去首尾静音；安静房间正确判“无语音”** |
 | **M2 连续录音** | **20/20 文件完整；PC 可通过 `bench audio dump` 下载 WAV** |
 | **M2 回放** | **I2S1 写入正常；功放/喇叭未出声，链路待排查** |
+| **上电清屏** | **POWERON/EXT/BROWNOUT 后 全白→全黑→底图，约 2.14 s，再进 READY** |
 
 > **当前方案：MUX=69 + gate start=95，只扫描 95..164 共 70 行；带状内写整条 400px 宽的数据，未变化像素不驱动。**
 > 带状外完全不扫描、完全不动；横带不闪，只有单词/序号变化。
@@ -48,6 +49,7 @@
 - VAD：20 ms 帧/10 ms hop，噪声底 20 分位，首尾留 100 ms，<300 ms 判无语音；加 ZCR 门限避免把电源哼声当语音。
 - `bench audio info/rec/play/tone/gen/dump/list/analyze/soak/selftest`。
 - 实测：2 s 录音 32,000 帧、无削顶、首个可用样本 121 ms；20/20 连续文件完整；1 kHz 算法自检 1000 Hz/−17.8 dBFS。
+- 上电清屏：POWERON/EXT/BROWNOUT 复位后跑全白→全黑→底图，实测 709/710/710 ms，共 2.14 s；`CONFIG_APP_BOOT_CLEAN` 可关。
 - **未通过**：声学测试检测不到 1 kHz，MAX98357A/喇叭未出声；详见 [`docs/M2测试记录.md`](docs/M2测试记录.md)。
 
 ### 1.2 M0 已完成（2026-10-25）

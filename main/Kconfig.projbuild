@@ -23,6 +23,14 @@ menu "E-Ink English Learning Device"
             Length of one M2 follow-along recording.  The training pipeline
             expects 2.0 s; 2000 ms is the default.
 
+    config APP_BOOT_CLEAN
+        bool "Clean the e-paper panel on cold boot"
+        default y
+        help
+            On power-on / external reset / brownout, run white -> black ->
+            base image (about 2.1 s) before showing READY.  This removes
+            ghosting left by the previous session.  Software resets skip it.
+
     config APP_AUDIO_MIC_GAIN_X100
         int "Microphone digital gain x100"
         default 100
