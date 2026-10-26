@@ -72,3 +72,6 @@ data/collected/
 
 # Google/Oxford 参考发音（版权音频，仅本地使用，不进 Git）
 data/reference/
+
+# Local reference clones (OpenPronounce)
+third_party/

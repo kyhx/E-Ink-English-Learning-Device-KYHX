@@ -30,6 +30,7 @@
 | [`../tools/audio/README.md`](../tools/audio/README.md) | M2 串口音频验收与 WAV 下载 |
 | [`public_datasets.md`](public_datasets.md) | 公开语料调研（speechocean762、L2-ARCTIC 等） |
 | [`public_test_speechocean762.md`](public_test_speechocean762.md) | 2000 条公开数据实测：69.7% / int8 98.3% |
+| [`openpronounce.md`](openpronounce.md) | OpenPronounce 研究、本地部署、与本项目关联 |
 | [`toolchain.md`](toolchain.md) | Python/IDF/ONNX/TFLite/字体/串口工具链 |
 | [`artifacts.md`](artifacts.md) | 模型、数据、视频到底在哪个目录 |
 

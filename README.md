@@ -269,6 +269,8 @@ bench selftest
 
 说明见 [`tools/pipeline/README.md`](tools/pipeline/README.md)。公开数据实测（speechocean762，2000 条）见 [`docs/public_test_speechocean762.md`](docs/public_test_speechocean762.md)。
 
+PC 端音素级参考基线（OpenPronounce，自托管）的研究/部署/与本项目的关系见 [`docs/openpronounce.md`](docs/openpronounce.md)。
+
 一次真实训练回放视频（74 秒，实际 loss/accuracy/混淆矩阵/样本/int8）：
 
 ```text
