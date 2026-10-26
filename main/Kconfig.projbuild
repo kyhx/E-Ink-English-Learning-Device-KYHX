@@ -48,6 +48,15 @@ menu "E-Ink English Learning Device"
             The MAX98357A shutdown/enable pin is active high on this board.
             Keep enabled unless the hardware is changed.
 
+    config APP_AUDIO_PLAY_GAIN_X100
+        int "Playback digital gain x100"
+        default 200
+        range 50 400
+        help
+            100 = unity, 200 = +6 dB.  Applied to WAV and test tones before
+            I2S TX; a hard limiter prevents int16 overflow.  Raise to 300 if
+            the speaker is still quiet; drop to 100 if it distorts.
+
     config APP_AUDIO_TONE_AMPLITUDE
         int "Test-tone amplitude (0..32767)"
         default 6000

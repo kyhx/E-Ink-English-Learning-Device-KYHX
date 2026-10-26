@@ -35,6 +35,8 @@ static const char *TAG = "audio_out";
 static i2s_chan_handle_t s_tx;
 static volatile bool s_playing;
 static bool s_inited;
+static uint16_t s_gain_x100 = CONFIG_APP_AUDIO_PLAY_GAIN_X100;
+static uint32_t s_last_clipped;
 
 static void amp_enable(bool on)
 {
@@ -72,8 +74,16 @@ static esp_err_t write_pcm(const int16_t *pcm, size_t frames)
             n = OUT_CHUNK_FRAMES;
         }
         for (size_t i = 0; i < n; i++) {
-            stereo[i * 2] = pcm[done + i];
-            stereo[i * 2 + 1] = pcm[done + i];
+            int32_t v = (int32_t)pcm[done + i] * s_gain_x100 / 100;
+            if (v > 32767) {
+                v = 32767;
+                s_last_clipped++;
+            } else if (v < -32768) {
+                v = -32768;
+                s_last_clipped++;
+            }
+            stereo[i * 2] = (int16_t)v;
+            stereo[i * 2 + 1] = (int16_t)v;
         }
         size_t written = 0;
         esp_err_t err = i2s_channel_write(s_tx, stereo, n * 2 * sizeof(int16_t),
@@ -166,6 +176,21 @@ bool audio_out_is_playing(void)
     return s_playing;
 }
 
+esp_err_t audio_out_set_gain_x100(uint16_t gain_x100)
+{
+    if (gain_x100 < 50 || gain_x100 > 800) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    s_gain_x100 = gain_x100;
+    ESP_LOGI(TAG, "playback gain = %u%%", (unsigned)gain_x100);
+    return ESP_OK;
+}
+
+uint16_t audio_out_get_gain_x100(void)
+{
+    return s_gain_x100;
+}
+
 esp_err_t audio_out_play_pcm(const int16_t *pcm, size_t frames)
 {
     if (!s_inited) {
@@ -182,6 +207,7 @@ esp_err_t audio_out_play_pcm(const int16_t *pcm, size_t frames)
     }
 
     s_playing = true;
+    s_last_clipped = 0;
     esp_err_t err = ESP_OK;
 
     amp_enable(true);
@@ -205,6 +231,10 @@ out:
     vTaskDelay(pdMS_TO_TICKS(50));       /* let the amp settle before mute */
     amp_enable(false);
     s_playing = false;
+    if (s_last_clipped > 0) {
+        ESP_LOGW(TAG, "playback limiter: %u samples clipped (gain=%u%%)",
+                 (unsigned)s_last_clipped, (unsigned)s_gain_x100);
+    }
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "playback failed: %s", esp_err_to_name(err));
     }

@@ -111,6 +111,9 @@ def main() -> int:
     soak = sub.add_parser("soak")
     soak.add_argument("--n", type=int, default=20)
 
+    gain = sub.add_parser("gain")
+    gain.add_argument("x100", type=int)
+
     rec = sub.add_parser("rec")
     rec.add_argument("--ms", type=int, default=2000)
     rec.add_argument("--out", default="build/rec.wav")
@@ -131,6 +134,10 @@ def main() -> int:
             print(text)
             match = re.search(r"soak: (\d+)/(\d+) valid files", text)
             return 0 if (match and match.group(1) == match.group(2)) else 1
+
+        if args.cmd == "gain":
+            print(bench.send(f"bench audio gain {args.x100}"))
+            return 0
 
         if args.cmd == "rec":
             text = bench.send(f"bench audio rec {args.ms}", timeout=args.ms / 1000 + 8)

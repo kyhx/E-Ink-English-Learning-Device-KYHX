@@ -248,6 +248,7 @@ static int cmd_bench_audio_info(void)
     printf("amp:  I2S1 BCLK=%d LRC=%d DIN=%d SD=%d (%s)\n",
            BOARD_AMP_BCLK_GPIO, BOARD_AMP_LRC_GPIO, BOARD_AMP_DIN_GPIO,
            BOARD_AMP_SD_GPIO, amp_pol);
+    printf("play gain: %u%% (limiter on)\n", audio_out_get_gain_x100());
     printf("state: rec=%s play=%s busy=%s\n",
            audio_in_is_active() ? "active" : "idle",
            audio_out_is_playing() ? "playing" : "idle",
@@ -452,6 +453,22 @@ static int cmd_bench_audio_dump(const char *path)
     return 0;
 }
 
+static int cmd_bench_audio_gain(int argc, char **argv)
+{
+    if (argc < 4) {
+        printf("play gain: %u%%\n", audio_out_get_gain_x100());
+        return 0;
+    }
+    int gain = atoi(argv[3]);
+    esp_err_t err = audio_out_set_gain_x100((uint16_t)gain);
+    if (err != ESP_OK) {
+        printf("usage: bench audio gain <50..800>\n");
+        return 1;
+    }
+    printf("play gain: %u%% (limiter on)\n", audio_out_get_gain_x100());
+    return 0;
+}
+
 static int cmd_bench_audio_list(void)
 {
     DIR *dir = opendir(AUDIO_REC_DIR);
@@ -598,7 +615,7 @@ static int cmd_bench_audio_selftest(void)
 static int cmd_bench_audio(int argc, char **argv)
 {
     if (argc < 3) {
-        printf("usage: bench audio info|rec|play|tone|gen|list|analyze|soak|selftest\n");
+        printf("usage: bench audio info|rec|play|tone|gain|gen|list|analyze|soak|selftest\n");
         return 1;
     }
     if (!strcmp(argv[2], "info")) {
@@ -615,6 +632,9 @@ static int cmd_bench_audio(int argc, char **argv)
     if (!strcmp(argv[2], "tone")) {
         int ms = (argc >= 4) ? atoi(argv[3]) : 1000;
         return cmd_bench_audio_tone(ms);
+    }
+    if (!strcmp(argv[2], "gain")) {
+        return cmd_bench_audio_gain(argc, argv);
     }
     if (!strcmp(argv[2], "gen")) {
         int ms = (argc >= 4) ? atoi(argv[3]) : 500;

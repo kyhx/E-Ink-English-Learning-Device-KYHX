@@ -34,6 +34,11 @@ esp_err_t audio_out_play_wav(const char *path);
 /* Play a sine test tone, e.g. 1000 Hz for 1 s. */
 esp_err_t audio_out_play_tone(uint32_t freq_hz, uint32_t ms, uint16_t amplitude);
 
+/* Digital gain applied before I2S TX (100 = unity, 200 = +6 dB).
+ * Values are clamped by a hard limiter to avoid int16 overflow. */
+esp_err_t audio_out_set_gain_x100(uint16_t gain_x100);
+uint16_t audio_out_get_gain_x100(void);
+
 #ifdef __cplusplus
 }
 #endif
