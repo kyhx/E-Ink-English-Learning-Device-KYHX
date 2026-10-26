@@ -25,7 +25,8 @@
 
 | 文档 | 内容 |
 | --- | --- |
-| [`data_collection.md`](data_collection.md) | 采集协议、600 条设计、标注口径 |
+| [`data_collection.md`](data_collection.md) | 采集协议、600 条设计、标注口径；含设备端采集固件 |
+| [`../tools/collect/README.md`](../tools/collect/README.md) | 设备采集固件、按键、PC 同步 |
 | [`../tools/audio/README.md`](../tools/audio/README.md) | M2 串口音频验收与 WAV 下载 |
 | [`public_datasets.md`](public_datasets.md) | 公开语料调研（speechocean762、L2-ARCTIC 等） |
 | [`public_test_speechocean762.md`](public_test_speechocean762.md) | 2000 条公开数据实测：69.7% / int8 98.3% |

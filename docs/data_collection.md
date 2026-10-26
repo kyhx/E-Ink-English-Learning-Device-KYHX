@@ -50,7 +50,31 @@ word_id,word,meaning,ipa
 
 如果 6 个人全是“读得很准”，负样本会太少。解决办法是**招募不同水平的人**、加入少量更难词/更快语速，而不是把正确样本硬标成错误。
 
-## 3. GUI 操作
+## 3. 设备端采集（推荐）
+
+设备麦克风与最终部署一致，避免 PC 麦克风频响差异。烧独立采集固件：
+
+```powershell
+. 'F:\esp\v6.1\esp-idf\export.ps1'
+pwsh -File tools\collect\build_collect_firmware.ps1
+python -m esptool --chip esp32s3 -p COM4 -b 460800 write-flash 0x0 build\collect\E-Ink-collect.bin
+```
+
+5 键：
+
+- `PREV/NEXT`：切 50 词；`SYNC` 短按翻正确/错误；长按切 S01–S08；
+- `RECORD`：录 2 s，VAD 通过才保存；`PLAY` 回放最后一条。
+
+保存到 `/storage/collect/audio/`，元数据在 `/storage/collect/labels.csv`。PC 分批同步：
+
+```powershell
+C:\venv-eink\Scripts\python.exe tools\collect\device_collect.py --port COM4 sync --delete
+```
+
+10 MB 约放 150 条 2 s WAV，建议每 80–100 条同步一次。完整说明见
+[`../tools/collect/README.md`](../tools/collect/README.md)。
+
+## 4. PC GUI 操作
 
 ```powershell
 .\.venv-train\Scripts\python.exe tools\pipeline\gui.py
@@ -63,7 +87,7 @@ word_id,word,meaning,ipa
 - 左侧：Mel 预览、标签、错误类型、备注。
 - 右侧：已采集列表；选中一条可改标签后“保存样本/标注”。
 
-### 标注已有样本
+### 标注已有样本（PC GUI）
 
 1. 右侧选中一条；
 2. 试听；
@@ -74,7 +98,7 @@ word_id,word,meaning,ipa
 
 点“导入 WAV”一次导入一条，自动重采样到 16 kHz、裁剪/补零到 2 秒；试听后标注保存。批量导入暂未做，设备端录音落地后可再加。
 
-## 4. 目录与格式
+## 5. 目录与格式
 
 ```text
 data/collected/v1.0/
@@ -96,7 +120,7 @@ S01_00_1792958639,audio/S01_00_1792958639.wav,S01,0,1,,,
 - `split`：留空即可；训练时按 `speaker_id` 自动留出说话人。若要固定官方划分，可填 `train`/`test`
 - `utt_id` 必须唯一；GUI 用 `说话人_词号_时间戳` 生成
 
-## 5. 采集后检查
+## 6. 采集后检查
 
 ```powershell
 .\.venv-train\Scripts\python.exe tools\pipeline\check_collected.py `
@@ -112,7 +136,7 @@ S01_00_1792958639,audio/S01_00_1792958639.wav,S01,0,1,,,
 
 有 `ERRORS` 先修；`WARNINGS` 至少逐条试听确认。
 
-## 6. 训练
+## 7. 训练
 
 ```powershell
 .\.venv-train\Scripts\python.exe tools\pipeline\run.py `
@@ -123,14 +147,14 @@ S01_00_1792958639,audio/S01_00_1792958639.wav,S01,0,1,,,
 
 不写 `--val-speakers` 时，脚本会按说话人留出约 25%。600 条建议先做 4/2 说话人划分；论文里再补 LOSO。
 
-## 7. 标注口径
+## 8. 标注口径
 
 - **正确**：音素基本准确，重音/节奏可接受；允许轻微口音。
 - **错误**：明显替换、吞音、加音、重音错误，或听成另一个词。
 - 边界样本（7 分左右）先标“错误”并写备注；后续可做阈值敏感性分析。
 - 同一个人的同一词多次录音，分别标注；不要因为“上次读对了”就默认这次正确。
 
-## 8. 已知限制
+## 9. 已知限制
 
 - PC 麦克风与设备 **MS4030（INMP441 兼容）** 的频响/底噪不同；设备端 I2S 录音尚未接入，最终要补设备端录音。
 - GUI 一次只导入一条；600 条主要靠现场录。

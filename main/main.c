@@ -32,6 +32,7 @@
 
 #include "app_state.h"
 #include "audio.h"
+#include "collect.h"
 #include "bench.h"
 #include "board/buttons.h"
 #include "services/storage.h"
@@ -177,6 +178,8 @@ void app_main(void)
 
 #if CONFIG_APP_MODE_DEMO
     demo_run();
+#elif CONFIG_APP_MODE_COLLECT
+    collect_run();    /* does not return */
 #else
     app_state_run();  /* does not return */
 #endif

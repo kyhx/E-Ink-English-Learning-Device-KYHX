@@ -8,6 +8,14 @@ menu "E-Ink English Learning Device"
             Useful as a display regression test.  When disabled, the M0
             home screen + bench console is started instead.
 
+    config APP_MODE_COLLECT
+        bool "Run the data-collection UI at boot"
+        default n
+        help
+            Boot into the 5-key collection UI instead of the M2 audio page.
+            Records 2 s WAVs with speaker/word/label/take metadata under
+            /storage/collect.  APP_MODE_DEMO has priority if both are set.
+
     config APP_BENCH
         bool "Enable the UART0 bench console"
         default y

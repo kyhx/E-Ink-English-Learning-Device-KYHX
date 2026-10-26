@@ -21,7 +21,6 @@
 
 #include "esp_heap_caps.h"
 #include "esp_log.h"
-#include "esp_system.h"
 #include "esp_timer.h"
 #include "sdkconfig.h"
 
@@ -30,8 +29,8 @@
 #include "audio_out.h"
 #include "audio_vad.h"
 #include "audio_wav.h"
+#include "boot_clean.h"
 #include "buttons.h"
-#include "epd_lut_partial.h"
 #include "epd_ssd1619a.h"
 
 static const char *TAG = "app";
@@ -257,66 +256,15 @@ static void handle_event(button_event_t ev)
     }
 }
 
-/*
- * 冷启动清屏：全白 -> 全黑 -> 底图，每步都是 partial LUT 整屏刷新（约 709 ms）。
- * 白/黑两步把上一轮残留的灰阶/残影推到饱和，再回到底图；最后重载 70 行 LUT，
- * 保证后续带状局刷从干净状态开始。
- *
- * 只在上电/复位/掉电复位时做；esp_restart() 的软复位跳过，避免调试时每次
- * 重启都等 2.1 s。可用 CONFIG_APP_BOOT_CLEAN 关闭。
- */
-static bool boot_clean_screen(void)
-{
-    int64_t t_all = esp_timer_get_time();
-    int64_t t0 = t_all;
-    bool ok = true;
-
-    epd_fb_clear(s_frame, 1);
-    bool step = epd_partial_show_full(s_frame, 5000);
-    ok = ok && step;
-    int64_t t1 = esp_timer_get_time();
-    ESP_LOGI(TAG, "boot clean white: %s %lld ms", step ? "ok" : "FAIL",
-             (long long)((t1 - t0) / 1000));
-
-    epd_fb_clear(s_frame, 0);
-    step = epd_partial_show_full(s_frame, 5000);
-    ok = ok && step;
-    int64_t t2 = esp_timer_get_time();
-    ESP_LOGI(TAG, "boot clean black: %s %lld ms", step ? "ok" : "FAIL",
-             (long long)((t2 - t1) / 1000));
-
-    memcpy(s_frame, s_base, EPD_FRAME_BYTES);
-    step = epd_partial_show_full(s_frame, 5000);
-    ok = ok && step;
-    int64_t t3 = esp_timer_get_time();
-    ESP_LOGI(TAG, "boot clean base:  %s %lld ms", step ? "ok" : "FAIL",
-             (long long)((t3 - t2) / 1000));
-
-    step = epd_partial_reload_lut(epd_lut_partial_70);
-    ok = ok && step;
-    ESP_LOGI(TAG, "boot clean LUT:   %s; total=%lld ms", step ? "ok" : "FAIL",
-             (long long)((esp_timer_get_time() - t_all) / 1000));
-    return ok;
-}
-
-/* 上电/复位/掉电复位才清屏；软复位不重复 2.1 s 清屏。 */
-static bool should_boot_clean(void)
-{
-    esp_reset_reason_t reason = esp_reset_reason();
-    return reason == ESP_RST_POWERON || reason == ESP_RST_EXT ||
-           reason == ESP_RST_BROWNOUT;
-}
-
 void app_state_run(void)
 {
     render_home_base();
 
 #if CONFIG_APP_BOOT_CLEAN
-    if (should_boot_clean()) {
-        boot_clean_screen();
+    if (boot_clean_should_run()) {
+        boot_clean_run(s_base, s_frame, "app");
     } else {
-        ESP_LOGI(TAG, "boot clean skipped (reset reason=%d)",
-                 (int)esp_reset_reason());
+        ESP_LOGI(TAG, "boot clean skipped (soft reset)");
         memcpy(s_frame, s_base, EPD_FRAME_BYTES);
         epd_partial_show_full(s_frame, 5000);
     }

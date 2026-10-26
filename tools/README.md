@@ -6,6 +6,7 @@ tools/
 ├── train/       # requirements、ONNX→TFLite 冒烟、玩具训练
 ├── pipeline/    # 采集/标注 + 训练/量化/部署 + GUI
 ├── audio/       # M2 串口音频验收 + WAV 下载
+├── collect/     # 设备采集固件 + PC 同步
 ├── reference/   # Oxford 参考发音下载
 ├── fonts/       # IPA/中文字形覆盖检查
 └── *.py         # 旧版图片/字库/接线辅助脚本
@@ -26,6 +27,7 @@ tools/
 | Oxford 参考音 | `.\.venv-train\Scripts\python.exe tools\reference\fetch_oxford_audio.py --words-file data\words.csv` |
 | M2 音频验收 | `.\.venv-train\Scripts\python.exe tools\audio\bench_audio.py --port COM4 info` |
 | 20 条录音 | `.\.venv-train\Scripts\python.exe tools\audio\bench_audio.py --port COM4 soak --n 20` |
+| 设备采集同步 | `C:\venv-eink\Scripts\python.exe tools\collect\device_collect.py --port COM4 sync --delete` |
 | 字库覆盖 | `.\.venv-train\Scripts\python.exe tools\fonts\check_fonts.py` |
 
 ## pipeline/
@@ -41,6 +43,12 @@ tools/
 - `visualize_cnn.py`：特征图 + Grad-CAM
 
 详细用法：[`pipeline/README.md`](pipeline/README.md)。
+
+## collect/
+
+- `build_collect_firmware.ps1`：独立 `build-collect/`，生成 `build/collect/E-Ink-collect.bin`。
+- `device_collect.py`：下载/删除设备 WAV，合并 `labels.csv`。
+- 说明：[`collect/README.md`](collect/README.md)。
 
 ## audio/
 

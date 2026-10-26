@@ -631,7 +631,7 @@ u0001,S01,M,12,1,5,s01_w012_c_01.wav,1760000000,1,train
 - [ ] 规则特征：平均半音偏差、轮廓相关、voiced 比例、时长比、能量比；固定权重 + 训练折选阈值 → 0–100 分 + 二分类。
 - [ ] Python 镜像实现（`tools/train/rule_ref.py`）；C/Python 在 20 条 pilot 上对齐：F0 中位数差 <2%，标签一致 ≥95%。
 - [ ] 结果页显示规则法分数/耗时；方法切换（CNN/规则/两者）。
-- [ ] 采集模式固件：选择 speaker/word/label/take；录音 2 s；写 WAV + `collect_meta.csv`；显示已录条数/剩余空间。
+- [x] 采集模式固件：5 键选择 speaker/word/label/take；录音 2 s；写 WAV + `/storage/collect/labels.csv`；显示状态，PC 同步工具见 `tools/collect/`。
 - [ ] HTTP 采集接口：`GET /api/collect/list`、`GET /api/collect/file?name=`、`POST /api/collect/delete`。
 - [ ] PC 采集器 `tools/collect/collect.py`：连 SoftAP，列文件、下载、校验 WAV、落 `dataset/raw/`、生成 manifest、可选删除。
 - [ ] 标注规范（1–5 分 + 二分类）和知情同意书模板；2 名标注员培训。

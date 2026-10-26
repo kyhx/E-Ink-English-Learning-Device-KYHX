@@ -3,6 +3,7 @@ idf_component_register(
          "word_view.c"
          "app_state.c"
          "board/buttons.c"
+         "ui/boot_clean.c"
          "services/storage.c"
          "services/audio.c"
          "services/audio_in.c"
@@ -10,8 +11,9 @@ idf_component_register(
          "services/audio_wav.c"
          "services/audio_vad.c"
          "services/audio_analysis.c"
+         "collect/collect.c"
          "bench/bench.c"
-    INCLUDE_DIRS "." "board" "services" "bench"
+    INCLUDE_DIRS "." "board" "services" "bench" "ui" "collect"
     REQUIRES epd_ssd1619a
              esp_driver_gpio
              esp_driver_spi

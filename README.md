@@ -37,6 +37,7 @@
 | **M2 连续录音** | **20/20 文件完整；PC 可通过 `bench audio dump` 下载 WAV** |
 | **M2 回放** | **I2S1 写入正常；功放/喇叭未出声，链路待排查** |
 | **上电清屏** | **POWERON/EXT/BROWNOUT 后 全白→全黑→底图，约 2.14 s，再进 READY** |
+| **设备采集固件** | **5 键采集页：S01–S08 / 50 词 / L0-L1 / T01-T99，WAV+labels.csv 落 LittleFS** |
 
 > **当前方案：MUX=69 + gate start=95，只扫描 95..164 共 70 行；带状内写整条 400px 宽的数据，未变化像素不驱动。**
 > 带状外完全不扫描、完全不动；横带不闪，只有单词/序号变化。
@@ -50,6 +51,7 @@
 - `bench audio info/rec/play/tone/gen/dump/list/analyze/soak/selftest`。
 - 实测：2 s 录音 32,000 帧、无削顶、首个可用样本 121 ms；20/20 连续文件完整；1 kHz 算法自检 1000 Hz/−17.8 dBFS。
 - 上电清屏：POWERON/EXT/BROWNOUT 复位后跑全白→全黑→底图，实测 709/710/710 ms，共 2.14 s；`CONFIG_APP_BOOT_CLEAN` 可关。
+- 设备采集固件：独立 `build/collect/E-Ink-collect.bin`，5 键选说话人/词/标签/录音，WAV + `labels.csv` 存 `/storage/collect`；PC 用 `tools/collect/device_collect.py sync --delete` 分批下载。详见 [`tools/collect/README.md`](tools/collect/README.md)。
 - **未通过**：声学测试检测不到 1 kHz，MAX98357A/喇叭未出声；详见 [`docs/M2测试记录.md`](docs/M2测试记录.md)。
 
 ### 1.2 M0 已完成（2026-10-25）
@@ -189,6 +191,7 @@ E-Ink-English-Learning-Device-KYHX/
     ├── train/                      # requirements + onnx→tflite 冒烟
     ├── pipeline/                   # 采集/标注 + 训练/量化/部署 + GUI
     ├── audio/                       # M2 串口音频验收 + WAV 下载
+    ├── collect/                     # 设备采集固件构建 + PC 同步
     ├── reference/                  # Oxford 参考发音下载
     ├── fonts/check_fonts.py        # IPA/中文字形覆盖检查
     └── png_to_raw.py / preview_demo.py / gen_font.py 等旧脚本
@@ -278,10 +281,22 @@ CNN 内部可视化（44 秒，真实激活 + Grad-CAM）：
 docs/animations/cnn-visual/renders/cnn-visual-explainer.mp4
 ```
 
-自采数据在 GUI 的 **采集 / 标注** 页完成，协议与 600 条设计见 [`docs/data_collection.md`](docs/data_collection.md)。采集后检查：
+自采数据有两种方式，协议与 600 条设计见 [`docs/data_collection.md`](docs/data_collection.md)：
+
+1. PC 麦克风：GUI 的 **采集 / 标注** 页；
+2. 设备麦克风（推荐，频响与最终部署一致）：烧 `build/collect/E-Ink-collect.bin`，用 5 键录到 `/storage/collect`，再同步到 PC：
 
 ```powershell
-.\.venv-train\Scripts\python.exe tools\pipeline\check_collected.py --data-dir data\collected\v1.0
+. 'F:\esp\v6.1\esp-idf\export.ps1'
+pwsh -File tools\collect\build_collect_firmware.ps1
+python -m esptool --chip esp32s3 -p COM4 -b 460800 write-flash 0x0 build\collect\E-Ink-collect.bin
+C:\venv-eink\Scripts\python.exe tools\collect\device_collect.py --port COM4 sync --delete
+```
+
+采集后检查：
+
+```powershell
+.\.venv-train\Scripts\python.exe tools\pipeline\check_collected.py --data-dir data\collected\device\v1.0
 ```
 
 > 本次分区表新增了 10 MB `storage`；首次启动 LittleFS 会自动格式化。若之前烧过旧分区表且挂载异常，执行一次 `idf.py erase-flash` 再烧录。

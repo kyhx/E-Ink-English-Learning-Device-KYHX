@@ -40,9 +40,11 @@
 #include "audio_wav.h"
 #include "board_pins.h"
 #include "buttons.h"
+#include "collect.h"
 #include "epd_lut_partial.h"
 #include "epd_ssd1619a.h"
 #include "storage.h"
+#include "word_view.h"
 
 static const char *TAG = "bench";
 
@@ -633,6 +635,65 @@ static int cmd_bench_audio_selftest(void)
     return rc;
 }
 
+static int cmd_bench_collect(int argc, char **argv)
+{
+    if (argc < 3) {
+        printf("usage: bench collect info|set <S01> <word> <0|1>|last|rec|list|csv|delete <path>\n");
+        return 1;
+    }
+    if (!strcmp(argv[2], "info")) {
+        collect_info();
+        return 0;
+    }
+    if (!strcmp(argv[2], "last")) {
+        printf("last_path=%s\nlast_utt=%s\n",
+               collect_last_path()[0] ? collect_last_path() : "none",
+               collect_last_utt()[0] ? collect_last_utt() : "none");
+        return 0;
+    }
+    if (!strcmp(argv[2], "rec")) {
+        collect_request_record();
+        printf("record requested (speak now)\n");
+        return 0;
+    }
+    if (!strcmp(argv[2], "list") || !strcmp(argv[2], "csv")) {
+        if (!strcmp(argv[2], "list")) {
+            collect_list();
+        } else {
+            collect_csv();
+        }
+        return 0;
+    }
+    if (!strcmp(argv[2], "delete")) {
+        if (argc < 4) {
+            printf("usage: bench collect delete <path>\n");
+            return 1;
+        }
+        return collect_delete(argv[3]) ? 0 : 1;
+    }
+    if (!strcmp(argv[2], "set")) {
+        if (argc < 6) {
+            printf("usage: bench collect set <S01> <word> <0|1>\n");
+            return 1;
+        }
+        int speaker = 0;
+        if (sscanf(argv[3], "S%d", &speaker) != 1) {
+            speaker = atoi(argv[3]);
+        }
+        int word = atoi(argv[4]);
+        int label = atoi(argv[5]);
+        if (!collect_set_state(speaker, word, label)) {
+            printf("set failed: speaker 1..8, word 0..%d, label 0/1, not recording\n",
+                   word_view_count() - 1);
+            return 1;
+        }
+        printf("state set: S%02d W%02d L%d\n", speaker, word, label);
+        return 0;
+    }
+    printf("unknown collect subcommand: %s\n", argv[2]);
+    return 1;
+}
+
 static int cmd_bench_audio(int argc, char **argv)
 {
     if (argc < 3) {
@@ -717,6 +778,9 @@ static int cmd_bench(int argc, char **argv)
     }
     if (!strcmp(argv[1], "audio")) {
         return cmd_bench_audio(argc, argv);
+    }
+    if (!strcmp(argv[1], "collect")) {
+        return cmd_bench_collect(argc, argv);
     }
     if (!strcmp(argv[1], "display")) {
         if (argc < 3) {
