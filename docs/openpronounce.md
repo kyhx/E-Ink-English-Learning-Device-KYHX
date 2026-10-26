@@ -95,7 +95,7 @@ score = 0.3 × acoustic_term
 | ffmpeg | 9.0.2 |
 | eSpeak NG | 1.52.0（`C:\Program Files\eSpeak NG`，`winget install eSpeak-NG.eSpeak-NG`） |
 | OpenPronounce | 0.3.0，editable 安装，源码在 `third_party/OpenPronounce` |
-| 模型缓存 | `build/openpronounce/hf`（当前为空） |
+| 模型缓存 | `build/openpronounce/hf`（2.4 GB，两个权重已下载） |
 | 服务 | `http://127.0.0.1:8000`，后台 uvicorn |
 
 ### 2.2 启动
@@ -108,55 +108,63 @@ pwsh -File tools\openpronounce\start.ps1
 
 ```text
 HF_HOME=<repo>\build\openpronounce\hf
+HF_HUB_OFFLINE=1
+TRANSFORMERS_OFFLINE=1
 PATH=C:\Program Files\eSpeak NG;...
 ```
 
-### 2.3 已验证
+### 2.3 已验证（完整评分已跑通）
+
+模型已从 **ModelScope 镜像** 下载（HuggingFace 直连仍超时），放在 HuggingFace cache 布局：
+
+```text
+build/openpronounce/hf/hub/
+├── models--facebook--wav2vec2-large-960h/
+│   └── snapshots/c4a07f.../pytorch_model.bin   1,262,009,187 B
+└── models--facebook--wav2vec2-lv-60-espeak-cv-ft/
+    └── snapshots/c4a07f.../pytorch_model.bin   1,263,535,127 B
+```
+
+两个文件的 SHA256 已和 ModelScope API 返回值核对通过。服务以
+`HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1` 启动，不会再等 HuggingFace。
+
+接口实测：
 
 ```text
 GET  /health      -> {"status":"ok"}
 GET  /languages   -> en/fr/es/de/it/pt/nl
 POST /phonemes    -> {"phonemes":["həloʊ","wɜːld"],"words":["hello","world"]}
-GET  /            -> 200，页面标题 OpenPronounce
+POST /pronunciation (developer.wav) -> score 99.01, 10.1 s（首次加载模型）
+POST /pronunciation (developer_error_an.wav) -> score 87.22, 1.6 s
+GET  /            -> 200
 pytest            -> 99 passed in 5.40s
 ```
 
-`/pronunciation` 需要两个 Wav2Vec2 权重。本机访问
-`huggingface.co` 和 `hf-mirror.com` 都连接超时，权重未下载，所以该接口当前返回：
+好样本：
 
 ```json
-{"detail":"Something went wrong"}
-HTTP 500
+{"score": 99.01, "acoustic_distance": 6.297, "wer": 0.0, "per": 0.0,
+ "transcribe": "HELLO I AM A DEVELOPER", "errors": []}
 ```
 
-日志是 `httpx.ConnectTimeout [WinError 10060]`，不是代码错误。
+故意读错 `an` 的样本：
 
-### 2.4 网络恢复后补全
-
-第一次评分会自动下载约 2.4 GB：
-
-```powershell
-$env:HF_HOME="$PWD\build\openpronounce\hf"
-$env:PATH="C:\Program Files\eSpeak NG;$env:PATH"
-C:\venv-eink\Scripts\openpronounce.exe `
-  third_party\OpenPronounce\assets\developer.wav "hello I am a developer"
+```json
+{"score": 87.22, "acoustic_distance": 6.533, "wer": 0.2, "per": 0.125,
+ "transcribe": "HELLO I AM AND DEVELOPER",
+ "error": "a: expected /ə/, heard /n/, confidence 0.999"}
 ```
 
-或保持服务运行，直接：
+### 2.4 模型来源与重装
 
-```powershell
-curl -X POST http://127.0.0.1:8000/pronunciation `
-  -F "file=@third_party/OpenPronounce/assets/developer.wav" `
-  -F "expected_text=hello I am a developer" -F "lang=en"
-```
+ModelScope 上同名仓库：
 
-如果 HuggingFace 仍不通，可设置可达的镜像：
+- <https://www.modelscope.cn/models/facebook/wav2vec2-large-960h>
+- <https://www.modelscope.cn/models/facebook/wav2vec2-lv-60-espeak-cv-ft>
 
-```powershell
-$env:HF_ENDPOINT="https://<your-mirror>"
-```
-
-模型下载完后，`/pronunciation`、`/speech2text`、`/tts` 才完整可用。
+如果删除了 `build/openpronounce/hf`，可以重新按 HuggingFace cache 布局下载；
+`start.ps1` 目前固定 offline，只有把 `HF_HUB_OFFLINE`/`TRANSFORMERS_OFFLINE`
+去掉，才能重新联网下载。
 
 ### 2.5 本地 API
 
@@ -240,5 +248,5 @@ $env:HF_ENDPOINT="https://<your-mirror>"
 ## 结论
 
 - **研究**：OpenPronounce 是目前少见的、MIT、可自托管、音素级发音评测实现；强项是“哪个音读错”，弱项是 2.4 GB 权重、词级误报偏高、强口音/儿童场景退化。
-- **部署**：本地 Web/API 已跑通（`/health`、`/languages`、`/phonemes`、UI、99 个测试）；完整评分因 HuggingFace 权重下载超时暂不可用，网络恢复后自动补全。
+- **部署**：本地 Web/API 已完整跑通：两个 Wav2Vec2 权重已从 ModelScope 下载并校验，`/pronunciation` 对好样本 99.01 分、对故意读错样本 87.22 分；`/health`、`/languages`、`/phonemes`、UI 和 99 个测试均通过。
 - **关联**：它是本项目的 **PC 参考/教师/弱标注工具**，不是设备端替代品；最有价值的是用它的音素级输出校准和解释 TinyMelNet，而不是把 Wav2Vec2 塞进 ESP32。

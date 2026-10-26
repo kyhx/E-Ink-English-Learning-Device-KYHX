@@ -8,6 +8,9 @@ if (-not (Test-Path $app)) { throw "missing $app; git clone https://github.com/H
 $env:HF_HOME = Join-Path $root "build\openpronounce\hf"
 $env:PATH = "C:\Program Files\eSpeak NG;" + $env:PATH
 $env:PYTHONIOENCODING = "utf-8"
+# Weights are already in build/openpronounce/hf; never wait on huggingface.co.
+$env:HF_HUB_OFFLINE = "1"
+$env:TRANSFORMERS_OFFLINE = "1"
 New-Item -ItemType Directory -Force $env:HF_HOME | Out-Null
 
 Set-Location $app
