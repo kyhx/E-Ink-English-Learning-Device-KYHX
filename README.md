@@ -186,6 +186,7 @@ E-Ink-English-Learning-Device-KYHX/
 │   ├── HINK-E042A13-A0资料汇总.md  # 屏体资料汇总
 │   ├── M0测试记录.md               # 分区/按键/bench/E0 实测
 │   ├── M2测试记录.md               # 录音/WAV/VAD/20 条/回环实测
+│   ├── diagrams/                   # 系统框图/电源树/时钟树/设备拓扑
 │   ├── board_pinmap.md             # YD-ESP32-S3 P1/P2 引脚与接线
 │   ├── data_collection.md          # 采集协议 / 600 条设计 / 标注口径
 │   ├── public_datasets.md          # 公开语料调研

@@ -24,6 +24,12 @@
 | [`M0测试记录.md`](M0测试记录.md) | M0 分区/LittleFS/按键/bench/E0 实测 |
 | [`M2测试记录.md`](M2测试记录.md) | M2 音频链：录音/WAV/VAD/20 条/清屏/音量 |
 
+## 图表
+
+| 文档 | 内容 |
+| --- | --- |
+| [`diagrams/README.md`](diagrams/README.md) | 系统框图、电源树、时钟树、设备拓扑（PNG/SVG/Mermaid） |
+
 ## 屏幕与硬件
 
 | 文档 | 内容 |

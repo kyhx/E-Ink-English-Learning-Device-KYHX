@@ -1,0 +1,42 @@
+%%{init: {
+  "theme": "base",
+  "themeVariables": {
+    "fontFamily": "Microsoft YaHei, Segoe UI, sans-serif",
+    "fontSize": "16px",
+    "primaryColor": "#ffffff",
+    "primaryBorderColor": "#37474f",
+    "lineColor": "#546e7a",
+    "tertiaryColor": "#f5f7f8"
+  },
+  "flowchart": {"curve": "basis", "nodeSpacing": 26, "rankSpacing": 42}
+}}%%
+flowchart LR
+  XTAL["40 MHz 晶振"]
+  PLL["PLL / 时钟树"]
+  CPU["CPU<br/>240 MHz"]
+  APB["APB<br/>80 MHz"]
+  MSPI["MSPI<br/>Flash / PSRAM 80 MHz"]
+  AUD["音频时钟分频"]
+
+  EPD["SPI2<br/>4 MHz → EPD"]
+  I2C["I2C<br/>100 kHz → INA219"]
+  UART["UART0<br/>115200 → CH343P"]
+  I2S0["I2S0<br/>BCLK 512 kHz<br/>16 kHz × 32-bit × mono"]
+  I2S1["I2S1<br/>BCLK 512 kHz<br/>16 kHz × 16-bit × stereo"]
+
+  XTAL --> PLL
+  PLL --> CPU
+  PLL --> APB
+  PLL --> MSPI
+  PLL --> AUD
+  APB --> EPD
+  APB --> I2C
+  APB --> UART
+  AUD --> I2S0
+  AUD --> I2S1
+
+  classDef core fill:#e8f5e9,stroke:#2e7d32,color:#1b5e20,stroke-width:1.5px
+  classDef bus fill:#e3f2fd,stroke:#1565c0,color:#0d47a1,stroke-width:1.5px
+  classDef io fill:#f3e5f5,stroke:#6a1b9a,color:#4a148c,stroke-width:1.5px
+  class XTAL,PLL,CPU,APB,MSPI,AUD core
+  class EPD,I2C,UART,I2S0,I2S1 io

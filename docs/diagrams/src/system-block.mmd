@@ -1,0 +1,42 @@
+%%{init: {
+  "theme": "base",
+  "themeVariables": {
+    "fontFamily": "Microsoft YaHei, Segoe UI, sans-serif",
+    "fontSize": "17px",
+    "primaryColor": "#ffffff",
+    "primaryBorderColor": "#37474f",
+    "lineColor": "#546e7a",
+    "tertiaryColor": "#f5f7f8"
+  },
+  "flowchart": {"curve": "basis", "nodeSpacing": 28, "rankSpacing": 48, "htmlLabels": false}
+}}%%
+flowchart LR
+  USR["用户"]
+  PC["PC 工具链<br/>PyTorch → ONNX → TFLite<br/>OpenPronounce 参考<br/>训练/量化输出模型"]
+
+  subgraph DEV["ESP32-S3 学习机（离线）"]
+    direction LR
+    UI["5 键 + 400×300 墨水屏<br/>SSD1619A"]
+    MCU["ESP32-S3<br/>240 MHz / 16 MB Flash<br/>8 MB PSRAM"]
+    REC["录音 2 s<br/>MS4030 / I2S0"]
+    AI["TinyMelNet int8<br/>6,066 参数 / 11.5 KB<br/>（待接 TFLM）"]
+    FS["LittleFS 10 MB<br/>WAV + labels.csv"]
+    PLAY["回放<br/>MAX98357A / I2S1"]
+  end
+
+  USR <--> UI
+  UI <--> MCU
+  MCU --> REC
+  REC --> AI
+  AI --> UI
+  REC --> FS
+  FS --> PLAY
+  PLAY --> USR
+  FS <-->|USB 串口 / 采集同步| PC
+
+  classDef hw fill:#e8f5e9,stroke:#2e7d32,color:#1b5e20,stroke-width:1.5px
+  classDef pc fill:#e3f2fd,stroke:#1565c0,color:#0d47a1,stroke-width:1.5px
+  classDef planned fill:#fff8e1,stroke:#f9a825,color:#e65100,stroke-dasharray:6 4,stroke-width:1.5px
+  class MCU,UI,REC,FS,PLAY hw
+  class PC pc
+  class AI planned

@@ -1,0 +1,48 @@
+%%{init: {
+  "theme": "base",
+  "themeVariables": {
+    "fontFamily": "Microsoft YaHei, Segoe UI, sans-serif",
+    "fontSize": "16px",
+    "primaryColor": "#ffffff",
+    "primaryBorderColor": "#37474f",
+    "lineColor": "#546e7a",
+    "tertiaryColor": "#f5f7f8"
+  },
+  "flowchart": {"curve": "basis", "nodeSpacing": 26, "rankSpacing": 42}
+}}%%
+flowchart LR
+  USB["USB-C 5 V<br/>CH343P / 供电"]
+  FUSE["PTC / 保险丝"]
+  LDO["板载 3.3 V LDO<br/>（当前 USB 路径）"]
+  RAIL3["3.3 V 系统轨<br/>MCU / EPD / MS4030"]
+  AMP5["5 V 功放轨<br/>MAX98357A + 3 W / 4 Ω"]
+
+  BATT["1S LiPo 3.7 V<br/>1500–2000 mAh<br/>（计划）"]
+  CHG["TP4056 充电 + 保护<br/>（计划）"]
+  PATH["负载共享 / 理想二极管<br/>（计划）"]
+  BOOST["5 V Boost ≥ 1 A<br/>（计划）"]
+  BUCK["3.3 V Buck-Boost<br/>（计划）"]
+  DIV["1 MΩ / 1 MΩ 分压<br/>→ GPIO2 ADC<br/>（计划）"]
+  INA["INA219 + 0.1 Ω shunt<br/>I²C 39/40<br/>（计划）"]
+
+  USB --> FUSE
+  FUSE --> LDO
+  LDO --> RAIL3
+  FUSE --> AMP5
+
+  USB --> CHG
+  BATT <--> CHG
+  BATT --> PATH
+  USB --> PATH
+  PATH --> BOOST
+  PATH --> BUCK
+  BOOST --> AMP5
+  BUCK --> RAIL3
+  BATT -.-> DIV
+  PATH -.-> INA
+
+  classDef current fill:#e8f5e9,stroke:#2e7d32,color:#1b5e20,stroke-width:1.5px
+  classDef planned fill:#fff8e1,stroke:#f9a825,color:#e65100,stroke-dasharray:6 4,stroke-width:1.5px
+  classDef load fill:#e3f2fd,stroke:#1565c0,color:#0d47a1,stroke-width:1.5px
+  class USB,FUSE,LDO,RAIL3,AMP5 current
+  class BATT,CHG,PATH,BOOST,BUCK,DIV,INA planned
