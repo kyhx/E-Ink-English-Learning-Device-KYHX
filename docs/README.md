@@ -2,6 +2,18 @@
 
 顶层 [`README.md`](../README.md) 是项目入口；`docs/` 放深入说明、实验记录和论文材料。
 
+> 最后整理：**2026-11-01**。当前状态以本页、[`交接文档.md`](交接文档.md)、M0/M2 记录为准；历史文档在 [`archive/`](archive/README.md)。
+
+## 当前状态（速览）
+
+| 层 | 状态 |
+| --- | --- |
+| 显示 | 70 行带状局刷 346 ms；整屏 709 ms；上电清屏 2.14 s |
+| 存储 | 10 MB LittleFS；20/20 连续录音文件完整 |
+| 音频 | 录音/VAD/WAV 通过；回放已出声但音量偏小 |
+| 采集 | 设备 5 键采集 + PC 同步已跑通；正式 600 条未采 |
+| 评分 | PC OpenPronounce 完整可用；设备 TinyMelNet 未接 TFLM |
+
 ## 先读
 
 | 文档 | 内容 |
@@ -10,7 +22,7 @@
 | [`技术方案.md`](技术方案.md) | 驱动方案、SPI/时序/局刷细节 |
 | [`board_pinmap.md`](board_pinmap.md) | YD-ESP32-S3 P1/P2 引脚、音频/屏/按键接线 |
 | [`M0测试记录.md`](M0测试记录.md) | M0 分区/LittleFS/按键/bench/E0 实测 |
-| [`M2测试记录.md`](M2测试记录.md) | M2 音频链：录音/WAV/VAD/20 条/回环实测 |
+| [`M2测试记录.md`](M2测试记录.md) | M2 音频链：录音/WAV/VAD/20 条/清屏/音量 |
 
 ## 屏幕与硬件
 
@@ -49,6 +61,20 @@
 | [`thesis/开题报告.md`](thesis/开题报告.md) | 开题报告正文（5 个部分） |
 | [`thesis/开题报告模板.doc`](thesis/开题报告模板.doc) | 学校模板（原根目录文件已移入） |
 
+## 归档
+
+| 文件 | 说明 |
+| --- | --- |
+| [`archive/README.md`](archive/README.md) | 历史文档索引 |
+| [`archive/交接文档-M0-2026-10-25.md`](archive/交接文档-M0-2026-10-25.md) | M0 时期交接（只查历史） |
+
+## 维护规则
+
+- **状态**只写在 `README.md`、`交接文档.md` 和 M0/M2 测试记录里；其他文档引用，不重复维护。
+- **实验数据**只追加到对应记录，不改旧结论；新结论用“追加/更正”标注日期。
+- **路径**统一用仓库相对路径：生成物在 `artifacts/`，构建在 `build/`；旧路径只在归档里保留。
+- **过时文档**移到 `archive/`，不要直接删除；归档文档不作为当前状态依据。
+
 ## 目录约定
 
 ```text
@@ -59,7 +85,7 @@ tools/         PC 工具（采集/训练/部署/参考音频）
 data/          词表 + 本地数据（collected/reference 不进 Git）
 artifacts/     生成物：模型/数据集/固件/日志（仅 README 入库）
 build/         默认固件 IDF 构建（不进 Git）
-build-collect/ 采集固件 IDF 构建（不进 Git）
+build-collect/ 采集固件 IDF 构建（按需重建，不进 Git）
 ```
 
 > 生成物、公开语料、自采录音、Oxford 音频都不要提交到 Git；见 [`artifacts.md`](artifacts.md)。

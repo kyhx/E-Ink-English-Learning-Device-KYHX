@@ -18,7 +18,7 @@
 
 ## 1. 当前状态
 
-已在本项目的硬件上完成实测（2026-10）：
+已在本项目的硬件上完成实测（2026-10/11）：
 
 | 项目 | 结果 |
 | --- | --- |
@@ -35,7 +35,7 @@
 | **M2 音频采集** | **MS4030 / I2S0，16 kHz 单声道，2 s 32,000 帧，无削顶** |
 | **M2 WAV / VAD** | **WAV 写入 LittleFS；VAD 去首尾静音；安静房间正确判“无语音”** |
 | **M2 连续录音** | **20/20 文件完整；PC 可通过 `bench audio dump` 下载 WAV** |
-| **M2 回放** | **I2S1 写入正常；功放/喇叭未出声，链路待排查** |
+| **M2 回放** | **已能出声，但音量偏小；建议 GAIN 15 dB / 5 V / 4 Ω** |
 | **上电清屏** | **POWERON/EXT/BROWNOUT 后 全白→全黑→底图，约 2.14 s，再进 READY** |
 | **设备采集固件** | **5 键采集页：S01–S08 / 50 词 / L0-L1 / T01-T99，WAV+labels.csv 落 LittleFS** |
 
@@ -52,7 +52,7 @@
 - 实测：2 s 录音 32,000 帧、无削顶、首个可用样本 121 ms；20/20 连续文件完整；1 kHz 算法自检 1000 Hz/−17.8 dBFS。
 - 上电清屏：POWERON/EXT/BROWNOUT 复位后跑全白→全黑→底图，实测 709/710/710 ms，共 2.14 s；`CONFIG_APP_BOOT_CLEAN` 可关。
 - 设备采集固件：独立 `artifacts/firmware/E-Ink-collect.bin`，5 键选说话人/词/标签/录音，WAV + `labels.csv` 存 `/storage/collect`；PC 用 `tools/collect/device_collect.py sync --delete` 分批下载。详见 [`tools/collect/README.md`](tools/collect/README.md)。
-- **未通过**：声学测试检测不到 1 kHz，MAX98357A/喇叭未出声；详见 [`docs/M2测试记录.md`](docs/M2测试记录.md)。
+- **音量待优化**：已确认能出声，但偏小；`bench audio gain 300` + MAX98357A `GAIN` 100 kΩ 到 GND（15 dB）+ 5 V/4 Ω 是优先项。详见 [`docs/M2测试记录.md`](docs/M2测试记录.md)。
 
 ### 1.2 M0 已完成（2026-10-25）
 

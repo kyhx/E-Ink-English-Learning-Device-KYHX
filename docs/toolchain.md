@@ -1,8 +1,8 @@
-# 工具链准备记录（2026-10-25）
+# 工具链准备记录（2026-11-01 更新）
 
 > 目标：把“固件构建 + 语音/数据处理 + 模型训练 + 量化转换 + 串口采集”所需的工具一次性装好，并留下可复现的验证脚本。
 >
-> 结论：**Python 3.12 训练环境、PyTorch→ONNX→TFLite int8 转换链、ESP-IDF v6.1 + 三个托管组件均已验证通过**。固件 build 通过，样例模型转换 PASS。
+> 结论：**Python 3.12 训练环境、PyTorch→ONNX→TFLite int8 转换链、ESP-IDF v6.1 + 四个托管组件均已验证通过**。固件 build 通过，样例模型转换 PASS。
 
 ---
 
@@ -29,7 +29,7 @@
 | `espressif/esp-dsp` | 1.8.2 | FFT / Mel 前端加速 |
 | `espressif/esp-nn` | 1.4.1 | TFLM 的 int8 算子加速（传递依赖） |
 
-`idf.py build` 已通过；当前 M0 app 约 **334 KB**，3 MB factory 分区剩余 89%。
+`idf.py build` 已通过；当前默认 M2 app 约 **388 KB**（`0x5ed50`），3 MB factory 分区剩余 88%。
 
 > 组件下载到 `managed_components/`（已 gitignore）；首次在新机器构建需要能访问 `components.espressif.com`。
 
@@ -58,10 +58,25 @@
 | pyserial | 3.5 | 串口采集/验收 |
 | pytest | 9.0.2 | 单测 |
 | PyYAML / tqdm | 6.0.3 / 4.67.1 | 配置/进度 |
+| transformers | 5.17.0 | OpenPronounce Wav2Vec2（PC 参考） |
+| fastdtw / phonemizer / Levenshtein | 0.3.4 / 3.4.0 / 0.27.5 | OpenPronounce 对齐/音素 |
+| gTTS / fastapi / uvicorn | 2.5.4 / 0.162.0 / 0.54.0 | OpenPronounce 参考音/服务 |
 
 **锁文件**：`tools/train/requirements.lock.txt`（`pip freeze` 生成，仅用于记录精确版本；不要直接 `pip install -r` 它，因为 `torch==2.14.1+cpu` 来自 PyTorch 专用 index）。复现请运行 `tools/setup/install-train.ps1`。
 
-### 1.3 字体
+### 1.3 OpenPronounce（PC 参考，不进固件）
+
+| 项 | 版本/路径 | 状态 |
+| --- | --- | --- |
+| eSpeak NG | 1.52.0，`C:\Program Files\eSpeak NG` | ✅ |
+| ffmpeg | 9.0.2 | ✅ |
+| 源码 | `third_party/OpenPronounce` v0.3.0，commit `74bc17e` | ✅ MIT，未提交 |
+| 权重 | `artifacts/openpronounce/hf`，2.4 GB | ✅ 从 ModelScope 下载，SHA256 已核对 |
+| 服务 | `http://127.0.0.1:8000` | ✅ `/pronunciation` 99.01/87.22 |
+
+启动/复现见 [`openpronounce.md`](openpronounce.md)、[`../tools/openpronounce/README.md`](../tools/openpronounce/README.md)。
+
+### 1.4 字体
 
 | 用途 | 路径 | 说明 |
 | --- | --- | --- |
