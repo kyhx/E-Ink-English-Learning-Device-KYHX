@@ -3,11 +3,11 @@ r"""One-command model/data pipeline for the E-Ink word device.
 
 Examples:
     # 1) synthetic data: proves audio -> log-Mel -> CNN -> TFLite int8
-    .\.venv-train\Scripts\python.exe tools\pipeline\run.py --toy --out build/pipeline_toy
+    .\.venv-train\Scripts\python.exe tools\pipeline\run.py --toy --out artifacts/models/pipeline_toy
 
     # 2) real data
     .\.venv-train\Scripts\python.exe tools\pipeline\run.py ^
-        --data-dir data/dataset/v1.0 --out build/pipeline_v1 ^
+        --data-dir data/dataset/v1.0 --out artifacts/models/pipeline_v1 ^
         --val-speakers S05,S06 --epochs 40 --augment
 
 Real manifest (`labels.csv`):
@@ -109,7 +109,7 @@ def main() -> int:
     ap.add_argument("--toy", action="store_true", help="generate synthetic WAV data and run")
     ap.add_argument("--toy-speakers", type=int, default=6)
     ap.add_argument("--toy-per-speaker", type=int, default=50)
-    ap.add_argument("--out", type=Path, default=Path("build/pipeline"))
+    ap.add_argument("--out", type=Path, default=Path("artifacts/models/pipeline"))
     ap.add_argument("--epochs", type=int, default=25)
     ap.add_argument("--batch-size", type=int, default=16)
     ap.add_argument("--lr", type=float, default=1e-3)

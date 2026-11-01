@@ -20,8 +20,8 @@ Extract so that this exists:
 
 Example:
     .\.venv-train\Scripts\python.exe tools\pipeline\prepare_speechocean762.py ^
-        --corpus build\data\speechocean762 ^
-        --out build\data\speechocean762_pipeline ^
+        --corpus artifacts\datasets\speechocean762 ^
+        --out artifacts\datasets\speechocean762_pipeline ^
         --limit-per-class 500
 """
 from __future__ import annotations

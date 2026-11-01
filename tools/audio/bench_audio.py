@@ -4,8 +4,8 @@
 Examples:
   python tools/audio/bench_audio.py --port COM4 info
   python tools/audio/bench_audio.py --port COM4 soak --n 20
-  python tools/audio/bench_audio.py --port COM4 rec --ms 2000 --out build/rec.wav
-  python tools/audio/bench_audio.py --port COM4 dump --path /storage/rec/loop_00.wav --out build/loop.wav
+  python tools/audio/bench_audio.py --port COM4 rec --ms 2000 --out artifacts/captures/rec.wav
+  python tools/audio/bench_audio.py --port COM4 dump --path /storage/rec/loop_00.wav --out artifacts/captures/loop.wav
 
 The device must already be running the M2 firmware and the UART0 bench
 console must be free (115200 8N1).
@@ -116,11 +116,11 @@ def main() -> int:
 
     rec = sub.add_parser("rec")
     rec.add_argument("--ms", type=int, default=2000)
-    rec.add_argument("--out", default="build/rec.wav")
+    rec.add_argument("--out", default="artifacts/captures/rec.wav")
 
     dump = sub.add_parser("dump")
     dump.add_argument("--path", required=True)
-    dump.add_argument("--out", default="build/dump.wav")
+    dump.add_argument("--out", default="artifacts/captures/dump.wav")
 
     args = parser.parse_args()
     bench = Bench(args.port, args.baud)

@@ -144,7 +144,7 @@ print(y.shape, sr2, librosa.power_to_db(mel).shape)
 训练 + ONNX/TFLite int8 + parity + C 数组导出，一条命令：
 
 ```powershell
-.\.venv-train\Scripts\python.exe tools\pipeline\run.py --toy --epochs 20 --out build/pipeline_toy
+.\.venv-train\Scripts\python.exe tools\pipeline\run.py --toy --epochs 20 --out artifacts/models/pipeline_toy
 ```
 
 真实数据用 `--data-dir data/dataset/v1.0 --val-speakers S05,S06`；详细说明见 [`tools/pipeline/README.md`](../tools/pipeline/README.md)。

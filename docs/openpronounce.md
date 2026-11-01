@@ -95,7 +95,7 @@ score = 0.3 × acoustic_term
 | ffmpeg | 9.0.2 |
 | eSpeak NG | 1.52.0（`C:\Program Files\eSpeak NG`，`winget install eSpeak-NG.eSpeak-NG`） |
 | OpenPronounce | 0.3.0，editable 安装，源码在 `third_party/OpenPronounce` |
-| 模型缓存 | `build/openpronounce/hf`（2.4 GB，两个权重已下载） |
+| 模型缓存 | `artifacts/openpronounce/hf`（2.4 GB，两个权重已下载） |
 | 服务 | `http://127.0.0.1:8000`，后台 uvicorn |
 
 ### 2.2 启动
@@ -107,7 +107,7 @@ pwsh -File tools\openpronounce\start.ps1
 然后打开 <http://127.0.0.1:8000>。脚本会设置：
 
 ```text
-HF_HOME=<repo>\build\openpronounce\hf
+HF_HOME=<repo>\artifacts\openpronounce\hf
 HF_HUB_OFFLINE=1
 TRANSFORMERS_OFFLINE=1
 PATH=C:\Program Files\eSpeak NG;...
@@ -118,7 +118,7 @@ PATH=C:\Program Files\eSpeak NG;...
 模型已从 **ModelScope 镜像** 下载（HuggingFace 直连仍超时），放在 HuggingFace cache 布局：
 
 ```text
-build/openpronounce/hf/hub/
+artifacts/openpronounce/hf/hub/
 ├── models--facebook--wav2vec2-large-960h/
 │   └── snapshots/c4a07f.../pytorch_model.bin   1,262,009,187 B
 └── models--facebook--wav2vec2-lv-60-espeak-cv-ft/
@@ -162,7 +162,7 @@ ModelScope 上同名仓库：
 - <https://www.modelscope.cn/models/facebook/wav2vec2-large-960h>
 - <https://www.modelscope.cn/models/facebook/wav2vec2-lv-60-espeak-cv-ft>
 
-如果删除了 `build/openpronounce/hf`，可以重新按 HuggingFace cache 布局下载；
+如果删除了 `artifacts/openpronounce/hf`，可以重新按 HuggingFace cache 布局下载；
 `start.ps1` 目前固定 offline，只有把 `HF_HUB_OFFLINE`/`TRANSFORMERS_OFFLINE`
 去掉，才能重新联网下载。
 

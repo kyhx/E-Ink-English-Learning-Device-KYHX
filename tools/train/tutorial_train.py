@@ -14,9 +14,9 @@ r"""模型训练“ hello world ”：用玩具数据跑通一遍训练流程。
     .\.venv-train\Scripts\python.exe tools\train\tutorial_train.py
 
 输出：
-    build/tutorial_model.pt
-    build/tutorial_model.onnx
-    build/tutorial_mels.png
+    artifacts/models/tutorial_model.pt
+    artifacts/models/tutorial_model.onnx
+    artifacts/models/tutorial_mels.png
 """
 from __future__ import annotations
 
@@ -37,8 +37,8 @@ N_TRAIN, N_VAL = 400, 100
 BATCH, EPOCHS = 32, 15
 SEED = 7
 ROOT = Path(__file__).resolve().parents[2]
-OUT = ROOT / "build"
-OUT.mkdir(exist_ok=True)
+OUT = ROOT / "artifacts" / "models"
+OUT.mkdir(parents=True, exist_ok=True)
 
 
 def make_dataset(n: int, rng: np.random.Generator) -> tuple[np.ndarray, np.ndarray]:

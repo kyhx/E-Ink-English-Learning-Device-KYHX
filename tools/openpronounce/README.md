@@ -23,7 +23,7 @@ HuggingFace 直连超时，权重改从 **ModelScope 同名仓库**下载，已�
 HuggingFace cache 布局放好：
 
 ```text
-build/openpronounce/hf/hub/
+artifacts/openpronounce/hf/hub/
 ├── models--facebook--wav2vec2-large-960h/
 │   └── snapshots/c4a07f.../pytorch_model.bin   1,262,009,187 B
 └── models--facebook--wav2vec2-lv-60-espeak-cv-ft/
@@ -35,7 +35,7 @@ build/openpronounce/hf/hub/
 `start.ps1` 固定设置：
 
 ```text
-HF_HOME=<repo>\build\openpronounce\hf
+HF_HOME=<repo>\artifacts\openpronounce\hf
 HF_HUB_OFFLINE=1
 TRANSFORMERS_OFFLINE=1
 ```
@@ -57,6 +57,6 @@ pytest            -> 99 passed
 
 ## 重装模型
 
-删除了 `build/openpronounce/hf` 时，先去掉启动脚本里的两个 `*_OFFLINE=1`，
+删除了 `artifacts/openpronounce/hf` 时，先去掉启动脚本里的两个 `*_OFFLINE=1`，
 再让第一次评分下载，或按 `docs/openpronounce.md` 的 ModelScope 地址重新放入
 cache。模型不要提交进 Git。

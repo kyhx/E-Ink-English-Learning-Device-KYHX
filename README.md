@@ -51,7 +51,7 @@
 - `bench audio info/rec/play/tone/gen/dump/list/analyze/soak/selftest`。
 - 实测：2 s 录音 32,000 帧、无削顶、首个可用样本 121 ms；20/20 连续文件完整；1 kHz 算法自检 1000 Hz/−17.8 dBFS。
 - 上电清屏：POWERON/EXT/BROWNOUT 复位后跑全白→全黑→底图，实测 709/710/710 ms，共 2.14 s；`CONFIG_APP_BOOT_CLEAN` 可关。
-- 设备采集固件：独立 `build/collect/E-Ink-collect.bin`，5 键选说话人/词/标签/录音，WAV + `labels.csv` 存 `/storage/collect`；PC 用 `tools/collect/device_collect.py sync --delete` 分批下载。详见 [`tools/collect/README.md`](tools/collect/README.md)。
+- 设备采集固件：独立 `artifacts/firmware/E-Ink-collect.bin`，5 键选说话人/词/标签/录音，WAV + `labels.csv` 存 `/storage/collect`；PC 用 `tools/collect/device_collect.py sync --delete` 分批下载。详见 [`tools/collect/README.md`](tools/collect/README.md)。
 - **未通过**：声学测试检测不到 1 kHz，MAX98357A/喇叭未出声；详见 [`docs/M2测试记录.md`](docs/M2测试记录.md)。
 
 ### 1.2 M0 已完成（2026-10-25）
@@ -134,6 +134,15 @@ E-Ink-English-Learning-Device-KYHX/
 ├── partitions.csv                  # nvs / phy_init / factory(3MB) / storage(10MB littlefs)
 ├── main/idf_component.yml          # 托管组件：littlefs / TFLM / esp-dsp
 ├── .clangd                         # clangd 过滤 -f* -m*
+├── artifacts/                      # 生成物（gitignore，仅 README 入库）
+│   ├── README.md                   # 模型/数据/固件/日志地图
+│   ├── models/                     # 训练/量化输出
+│   ├── datasets/                   # 公开语料/清单
+│   ├── firmware/                   # E-Ink-collect.bin
+│   ├── openpronounce/              # PC 参考权重缓存
+│   ├── captures/ logs/ reference/
+├── build/                          # 默认固件 IDF 构建（gitignore）
+├── build-collect/                  # 采集固件 IDF 构建（gitignore）
 ├── main/
 │   ├── CMakeLists.txt
 │   ├── main.c                      # app_main：NVS/EPD/LittleFS/按键/bench 初始化
@@ -143,6 +152,8 @@ E-Ink-English-Learning-Device-KYHX/
 │   ├── board/
 │   │   ├── board_pins.h            # 引脚唯一来源
 │   │   └── buttons.c/.h            # 5 键消抖/长按
+│   ├── collect/                    # 设备采集模式（5 键 + labels.csv）
+│   ├── ui/                         # boot_clean 等 UI 公共件
 │   ├── services/
 │   │   ├── storage.c/.h            # LittleFS 挂载 + 64 KB 自检
 │   │   ├── audio.c/.h              # M2 音频初始化
@@ -192,6 +203,7 @@ E-Ink-English-Learning-Device-KYHX/
     ├── pipeline/                   # 采集/标注 + 训练/量化/部署 + GUI
     ├── audio/                       # M2 串口音频验收 + WAV 下载
     ├── collect/                     # 设备采集固件构建 + PC 同步
+    ├── openpronounce/               # 本地参考评分服务启停
     ├── reference/                  # Oxford 参考发音下载
     ├── fonts/check_fonts.py        # IPA/中文字形覆盖检查
     └── png_to_raw.py / preview_demo.py / gen_font.py 等旧脚本
@@ -258,7 +270,7 @@ bench selftest
 完整训练/部署验证管线（音频→log-Mel→CNN→ONNX→TFLite int8→parity→C 数组）：
 
 ```powershell
-.\.venv-train\Scripts\python.exe tools\pipeline\run.py --toy --epochs 20 --out build/pipeline_toy
+.\.venv-train\Scripts\python.exe tools\pipeline\run.py --toy --epochs 20 --out artifacts/models/pipeline_toy
 ```
 
 图形界面：
@@ -286,12 +298,12 @@ docs/animations/cnn-visual/renders/cnn-visual-explainer.mp4
 自采数据有两种方式，协议与 600 条设计见 [`docs/data_collection.md`](docs/data_collection.md)：
 
 1. PC 麦克风：GUI 的 **采集 / 标注** 页；
-2. 设备麦克风（推荐，频响与最终部署一致）：烧 `build/collect/E-Ink-collect.bin`，用 5 键录到 `/storage/collect`，再同步到 PC：
+2. 设备麦克风（推荐，频响与最终部署一致）：烧 `artifacts/firmware/E-Ink-collect.bin`，用 5 键录到 `/storage/collect`，再同步到 PC：
 
 ```powershell
 . 'F:\esp\v6.1\esp-idf\export.ps1'
 pwsh -File tools\collect\build_collect_firmware.ps1
-python -m esptool --chip esp32s3 -p COM4 -b 460800 write-flash 0x0 build\collect\E-Ink-collect.bin
+python -m esptool --chip esp32s3 -p COM4 -b 460800 write-flash 0x0 artifacts\firmware\E-Ink-collect.bin
 C:\venv-eink\Scripts\python.exe tools\collect\device_collect.py --port COM4 sync --delete
 ```
 

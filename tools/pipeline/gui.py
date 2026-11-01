@@ -90,7 +90,7 @@ class App:
         self.recording = False
 
         self.data_dir = tk.StringVar(value=str(ROOT / "data" / "dataset" / "v1.0"))
-        self.out_dir = tk.StringVar(value=str(ROOT / "build" / "pipeline_gui"))
+        self.out_dir = tk.StringVar(value=str(ROOT / "artifacts" / "models" / "pipeline_gui"))
         self.epochs = tk.StringVar(value="25")
         self.batch = tk.StringVar(value="16")
         self.lr = tk.StringVar(value="0.001")
@@ -793,7 +793,7 @@ class App:
     def _generate_toy(self) -> None:
         if self.toy_thread and self.toy_thread.is_alive():
             return
-        out = ROOT / "build" / "gui_toy_dataset"
+        out = ROOT / "artifacts" / "models" / "gui_toy_dataset"
 
         def work() -> None:
             try:
@@ -1177,7 +1177,7 @@ def main() -> int:
     root.configure(bg=BG)
     app = App(root)
     if args.selftest:
-        toy = ROOT / "build" / "pipeline_toy2" / "dataset"
+        toy = ROOT / "artifacts" / "models" / "pipeline_toy2" / "dataset"
         if toy.exists():
             app.data_dir.set(str(toy))
             app._inspect_data()

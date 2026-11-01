@@ -62,23 +62,23 @@
 ## 复现
 
 ```powershell
-# 1) 下载并解压 speechocean762 到 build/data/speechocean762
+# 1) 下载并解压 speechocean762 到 artifacts/datasets/speechocean762
 #    https://www.openslr.org/101/
 
 # 2) 生成平衡子集 manifest（官方 train/test 划分）
 .\.venv-train\Scripts\python.exe tools\pipeline\prepare_speechocean762.py `
-  --corpus build\data\speechocean762 `
-  --out build\data\speechocean762_pipeline `
+  --corpus artifacts\datasets\speechocean762 `
+  --out artifacts\datasets\speechocean762_pipeline `
   --limit-per-class 500
 
 # 3) 训练 + 转换 + parity
 .\.venv-train\Scripts\python.exe tools\pipeline\run.py `
-  --data-dir build\data\speechocean762_pipeline `
-  --out build\pipeline_speechocean762 `
+  --data-dir artifacts\datasets\speechocean762_pipeline `
+  --out artifacts\models\pipeline_speechocean762 `
   --epochs 20 --batch-size 32 --augment
 ```
 
-报告：`build/pipeline_speechocean762/report.md`
+报告：`artifacts/models/pipeline_speechocean762/report.md`
 
 ## 解释与局限
 

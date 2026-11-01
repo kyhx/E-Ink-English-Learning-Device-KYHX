@@ -57,7 +57,7 @@ word_id,word,meaning,ipa
 ```powershell
 . 'F:\esp\v6.1\esp-idf\export.ps1'
 pwsh -File tools\collect\build_collect_firmware.ps1
-python -m esptool --chip esp32s3 -p COM4 -b 460800 write-flash 0x0 build\collect\E-Ink-collect.bin
+python -m esptool --chip esp32s3 -p COM4 -b 460800 write-flash 0x0 artifacts\firmware\E-Ink-collect.bin
 ```
 
 5 键：
@@ -141,7 +141,7 @@ S01_00_1792958639,audio/S01_00_1792958639.wav,S01,0,1,,,
 ```powershell
 .\.venv-train\Scripts\python.exe tools\pipeline\run.py `
   --data-dir data\collected\v1.0 `
-  --out build\pipeline_own_v1 `
+  --out artifacts\models\pipeline_own_v1 `
   --epochs 40 --batch-size 16 --augment
 ```
 

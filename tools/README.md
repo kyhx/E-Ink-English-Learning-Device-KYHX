@@ -46,7 +46,7 @@ tools/
 
 ## collect/
 
-- `build_collect_firmware.ps1`：独立 `build-collect/`，生成 `build/collect/E-Ink-collect.bin`。
+- `build_collect_firmware.ps1`：独立 `build-collect/`，生成 `artifacts/firmware/E-Ink-collect.bin`。
 - `device_collect.py`：下载/删除设备 WAV，合并 `labels.csv`。
 - 说明：[`collect/README.md`](collect/README.md)。
 

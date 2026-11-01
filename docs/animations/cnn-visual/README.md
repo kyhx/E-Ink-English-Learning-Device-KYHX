@@ -18,7 +18,7 @@
 
 ## 真实数据
 
-- 模型：`build/pipeline_speechocean762/model.pt`，6,066 参数
+- 模型：`artifacts/models/pipeline_speechocean762/model.pt`，6,066 参数
 - TN 样本：`096260016`，说话人 9626，真实 3 分，p(correct)=0.062
 - TP 样本：`020310141`，说话人 2031，真实 9 分，p(correct)=0.913
 - 输入：40×64 log-Mel；2 秒中心裁剪
@@ -43,9 +43,9 @@ Grad-CAM: [10, 16] -> 上采样到 40×64
 
 ```powershell
 .\.venv-train\Scripts\python.exe tools\pipeline\visualize_cnn.py `
-  --model build\pipeline_speechocean762\model.pt `
-  --wav build\data\speechocean762\WAVE\SPEAKER9626\096260016.WAV `
-  --out build\cnn_vis
+  --model artifacts\models\pipeline_speechocean762\model.pt `
+  --wav artifacts\datasets\speechocean762\WAVE\SPEAKER9626\096260016.WAV `
+  --out artifacts\captures\cnn_vis
 ```
 
 输出：`mel.png`、`conv1.png`、`conv2.png`、`conv3.png`、`gradcam.png`、`meta.json`。

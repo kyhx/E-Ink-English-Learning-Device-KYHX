@@ -23,11 +23,11 @@ C:\venv-eink\Scripts\python.exe tools\audio\bench_audio.py --port COM4 info
 C:\venv-eink\Scripts\python.exe tools\audio\bench_audio.py --port COM4 soak --n 20
 
 # 录 2 s，下载为 PC 上的 WAV
-C:\venv-eink\Scripts\python.exe tools\audio\bench_audio.py --port COM4 rec --ms 2000 --out build\rec.wav
+C:\venv-eink\Scripts\python.exe tools\audio\bench_audio.py --port COM4 rec --ms 2000 --out artifacts\captures\rec.wav
 
 # 下载设备上已有的 WAV
 C:\venv-eink\Scripts\python.exe tools\audio\bench_audio.py --port COM4 dump `
-  --path /storage/rec/rec_20261026_121630_232.wav --out build\rec.wav
+  --path /storage/rec/rec_20261026_121630_232.wav --out artifacts\captures\rec.wav
 
 ```
 

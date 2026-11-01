@@ -57,7 +57,9 @@ components/    可复用驱动组件
 docs/          说明、实验记录、论文、动画
 tools/         PC 工具（采集/训练/部署/参考音频）
 data/          词表 + 本地数据（collected/reference 不进 Git）
-build/         生成物（不进 Git）
+artifacts/     生成物：模型/数据集/固件/日志（仅 README 入库）
+build/         默认固件 IDF 构建（不进 Git）
+build-collect/ 采集固件 IDF 构建（不进 Git）
 ```
 
 > 生成物、公开语料、自采录音、Oxford 音频都不要提交到 Git；见 [`artifacts.md`](artifacts.md)。

@@ -3,8 +3,8 @@ r"""Visualize TinyMelNet activations and Grad-CAM for one real WAV.
 
 Example:
     .\.venv-train\Scripts\python.exe tools\pipeline\visualize_cnn.py ^
-        --model build\pipeline_speechocean762\model.pt ^
-        --wav build\data\speechocean762\WAVE\SPEAKER9626\096260016.WAV ^
+        --model artifacts\models\pipeline_speechocean762\model.pt ^
+        --wav artifacts\datasets\speechocean762\WAVE\SPEAKER9626\096260016.WAV ^
         --out docs\animations\cnn-visual\assets
 
 Outputs:
@@ -82,7 +82,7 @@ def _save_cam(f: np.ndarray, cam: np.ndarray, path: Path) -> None:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--model", type=Path, default=Path("build/pipeline_speechocean762/model.pt"))
+    ap.add_argument("--model", type=Path, default=Path("artifacts/models/pipeline_speechocean762/model.pt"))
     ap.add_argument("--wav", type=Path, required=True)
     ap.add_argument("--out", type=Path, required=True)
     args = ap.parse_args()

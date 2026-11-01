@@ -75,3 +75,7 @@ data/reference/
 
 # Local reference clones (OpenPronounce)
 third_party/
+
+# Generated artifacts (models/data/firmware/logs); keep the map only
+artifacts/*
+!artifacts/README.md

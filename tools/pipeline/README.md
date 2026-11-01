@@ -8,7 +8,7 @@
 
 ```powershell
 $env:PYTHONUTF8='1'
-.\.venv-train\Scripts\python.exe tools\pipeline\run.py --toy --epochs 20 --out build/pipeline_toy
+.\.venv-train\Scripts\python.exe tools\pipeline\run.py --toy --epochs 20 --out artifacts/models/pipeline_toy
 ```
 
 本机实测结果：
@@ -58,7 +58,7 @@ u0003,audio/u0003.wav,S09,12,1,test
 ```powershell
 .\.venv-train\Scripts\python.exe tools\pipeline\run.py `
   --data-dir data/dataset/v1.0 `
-  --out build/pipeline_v1 `
+  --out artifacts/models/pipeline_v1 `
   --val-speakers S05,S06 `
   --epochs 40 --augment
 ```
@@ -71,12 +71,12 @@ u0003,audio/u0003.wav,S09,12,1,test
 
 ```powershell
 .\.venv-train\Scripts\python.exe tools\pipeline\prepare_speechocean762.py `
-  --corpus build\data\speechocean762 `
-  --out build\data\speechocean762_pipeline --limit-per-class 500
+  --corpus artifacts\datasets\speechocean762 `
+  --out artifacts\datasets\speechocean762_pipeline --limit-per-class 500
 
 .\.venv-train\Scripts\python.exe tools\pipeline\run.py `
-  --data-dir build\data\speechocean762_pipeline `
-  --out build\pipeline_speechocean762 --epochs 20 --batch-size 32 --augment
+  --data-dir artifacts\datasets\speechocean762_pipeline `
+  --out artifacts\models\pipeline_speechocean762 --epochs 20 --batch-size 32 --augment
 ```
 
 详见 [`docs/public_test_speechocean762.md`](../../docs/public_test_speechocean762.md)。注意这是**句级评分**的代理任务，不是 2 秒单词卡准确率。

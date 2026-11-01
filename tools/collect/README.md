@@ -32,7 +32,7 @@ pwsh -File tools\collect\build_collect_firmware.ps1
 生成合并镜像：
 
 ```text
-build/collect/E-Ink-collect.bin
+artifacts/firmware/E-Ink-collect.bin
 ```
 
 当前构建：app 395,664 B（0x60990），合并镜像 461,200 B；
@@ -41,7 +41,7 @@ SHA256 `6ad1b596c672f8cea35eb7688dfada0b266ae415be8a0c9f8c429e9d4eb3d628`。
 烧录（只覆盖 bootloader/分区表/app，不动 10 MB storage）：
 
 ```powershell
-python -m esptool --chip esp32s3 -p COM4 -b 460800 write-flash 0x0 build\collect\E-Ink-collect.bin
+python -m esptool --chip esp32s3 -p COM4 -b 460800 write-flash 0x0 artifacts\firmware\E-Ink-collect.bin
 ```
 
 > 这版把 `CONFIG_APP_MODE_COLLECT=y` 编进独立 `build-collect/`，不改变默认 M2 固件。

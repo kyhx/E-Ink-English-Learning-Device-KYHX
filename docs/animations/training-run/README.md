@@ -20,9 +20,9 @@
 ## 数据来源
 
 - 数据：`speechocean762`，CC BY 4.0，2000 条平衡子集
-- 训练记录：`build/pipeline_speechocean762/history.json`
-- 指标：`build/pipeline_speechocean762/metrics.json`
-- 逐条预测：`build/pipeline_speechocean762/val_predictions.csv`
+- 训练记录：`artifacts/models/pipeline_speechocean762/history.json`
+- 指标：`artifacts/models/pipeline_speechocean762/metrics.json`
+- 逐条预测：`artifacts/models/pipeline_speechocean762/val_predictions.csv`
 - 公开数据报告：[`docs/public_test_speechocean762.md`](../../public_test_speechocean762.md)
 
 三条样本（真实音频）：

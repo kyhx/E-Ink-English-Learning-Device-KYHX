@@ -58,6 +58,16 @@ under its own license:
 - **HyperFrames 0.8.198** (Apache-2.0) is used as the local renderer; the CLI
   is not redistributed in this repository.
 
+## OpenPronounce (PC reference only, not in firmware)
+
+- [Halleck45/OpenPronounce](https://github.com/Halleck45/OpenPronounce) v0.3.0 is
+  **MIT**; the clone under `third_party/OpenPronounce` is not committed.
+- Its Wav2Vec2 checkpoints `facebook/wav2vec2-large-960h` and
+  `facebook/wav2vec2-lv-60-espeak-cv-ft` are **Apache-2.0**; the ~2.4 GB weights
+  under `artifacts/openpronounce/hf` are not committed.
+- The local service is a research/PC reference; it is not linked into the
+  ESP32-S3 firmware.
+
 ## Audio / dataset
 
 Reference pronunciations and the recorded dataset are **not** covered by the
