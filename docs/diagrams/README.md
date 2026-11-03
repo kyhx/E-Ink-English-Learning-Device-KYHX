@@ -2,6 +2,8 @@
 
 本目录放四张工程图，源文件是 Mermaid（`src/*.mmd`），渲染产物在 `renders/`（SVG + PNG）。
 
+> 2026-11 选型：MCU 为 ESP32-S3-WROOM-1-N16R8，音频为 **LMD2718 + NS4168 模块 + 8Ω 1W**，USB-UART 目标 **CH343K**。音频模块具体引脚未定，图中标为“待 pinout”。
+
 ## 图例
 
 | 样式 | 含义 |
@@ -18,6 +20,7 @@
 - 源文件：[`src/system-block.mmd`](src/system-block.mmd)
 - SVG：[`renders/system-block.svg`](renders/system-block.svg)
 - 说明：设备端离线运行；TinyMelNet 是计划接入 TFLM 的模型，虚线表示尚未进固件。
+- 音频已定为 LMD2718 + NS4168 模块，具体接口待厂商 pinout。
 
 ## 2. 电源树
 

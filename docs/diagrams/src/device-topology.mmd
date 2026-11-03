@@ -16,12 +16,12 @@ flowchart LR
 
   subgraph PER["板载 / 外设"]
     MEM["16 MB Flash<br/>8 MB Octal PSRAM"]
-    USB["CH343P<br/>USB-UART<br/>GPIO43/44"]
+    USB["CH343K/CH343P<br/>USB-UART<br/>GPIO43/44"]
     EPD["SSD1619A<br/>400×300 单色<br/>SCK12 / MOSI11<br/>CS10 / DC9 / RST8 / BUSY7"]
     KEY["5 键<br/>PREV / NEXT<br/>PLAY / RECORD<br/>SYNC<br/>GPIO1/4/5/6/13"]
-    MIC["MS4030<br/>I2S0 麦克风<br/>BCLK14 / WS15 / SD16<br/>PWR gate 38"]
-    AMP["MAX98357A<br/>I2S1 功放<br/>BCLK17<br/>LRC18<br/>DIN21<br/>SD47"]
-    SPK["3 W / 4 Ω<br/>差分喇叭"]
+    MIC["LMD2718 麦克风模块<br/>I2S/模拟接口待 pinout"]
+    AMP["NS4168 功放模块<br/>I2S1 / 5V<br/>8Ω 1W"]
+    SPK["8Ω 1W<br/>差分喇叭"]
     INA["INA219<br/>I²C 电流计<br/>（计划）"]
     BAT["电池分压<br/>GPIO2 ADC<br/>（计划）"]
   end

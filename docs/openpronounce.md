@@ -1,8 +1,10 @@
 # OpenPronounce 研究、本地部署与本项目关联
 
-> 上游：<https://github.com/Halleck45/OpenPronounce>  
-> 本地克隆：`third_party/OpenPronounce`（commit `74bc17e`，v0.3.0，MIT；已 gitignore）  
-> 本地服务：<http://127.0.0.1:8000>（uvicorn，当前在跑）  
+> **优先级说明（2026-11-03）**：这是 PC 端参考工具，**不是就业主线**。在 TFLM 闭环、自绘 PCB、测试报告完成前，不要再投入时间扩展它。
+
+> 上游：<https://github.com/Halleck45/OpenPronounce>
+> 本地克隆：`third_party/OpenPronounce`（commit `74bc17e`，v0.3.0，MIT；已 gitignore）
+> 本地服务：<http://127.0.0.1:8000>（uvicorn，当前在跑）
 > 日期：2026-10-26
 
 ---

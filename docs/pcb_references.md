@@ -79,7 +79,7 @@ MCU/USB/天线     -> ESP32-S3-DevKitC-1 + Espressif 硬件设计指南
 EPD 连接器/电源  -> Waveshare 4.2 驱动板 + Inkplate 4/6 的 EPD 电源页
 ESP32-S3+EPD+电池 -> LILYGO T5S3 4.7 PRO
 紧凑电池/结构    -> M5Paper / Inkplate 4
-音频             -> ESP32-S3-Korvo-2 + Adafruit MAX98357A
+音频             -> LMD2718+NS4168 模块；Korvo-2/MAX98357A 作外围参考
 充电/电源路径    -> Adafruit BQ24074 + TI BQ24074
 电流检测         -> Adafruit INA219
 ```
@@ -89,7 +89,7 @@ ESP32-S3+EPD+电池 -> LILYGO T5S3 4.7 PRO
 1. **EPD 排线针序**：不同面板/连接器完全不同，必须对照屏体规格书和 FPC。
 2. **EPD 电源**：4.2" 单色屏通常只需 3.3V 逻辑 + 面板驱动板；大屏/高分辨率才需要 TPS65185 多路电源。
 3. **天线**：不要抄模块位置；按 ESP32-S3-WROOM-1 的 keepout 和外壳重新仿真/实测。
-4. **音频**：MAX98357A 是数字功放，别把模拟 codec 的差分输入电路照搬。
+4. **音频**：目标是 LMD2718+NS4168 模块；MAX98357A 只作 I2S D 类外围/滤波参考，别把模拟 codec 电路照搬。
 5. **充电**：TP4056 没有电源路径；要边充边用，选 BQ24074/IP5306 或加理想二极管。
 6. **许可证**：Inkplate/LILYGO 等硬件开源许可证不同，参考/复用前看仓库 LICENSE，论文中注明来源。
 
@@ -101,6 +101,6 @@ ESP32-S3+EPD+电池 -> LILYGO T5S3 4.7 PRO
 3. Waveshare 4.2 EPD 驱动板手册
 4. LILYGO T5S3 4.7 PRO 原理图
 5. Inkplate 4 电源/EPD 分页
-6. Korvo-2 + Adafruit MAX98357A
+6. Korvo-2 / MAX98357A（外围参考）+ LMD2718+NS4168
 7. BQ24074 + INA219
 ```

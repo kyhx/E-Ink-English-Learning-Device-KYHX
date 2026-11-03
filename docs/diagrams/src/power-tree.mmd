@@ -11,14 +11,14 @@
   "flowchart": {"curve": "basis", "nodeSpacing": 26, "rankSpacing": 42}
 }}%%
 flowchart LR
-  USB["USB-C 5 V<br/>CH343P / 供电"]
+  USB["USB-C 5 V<br/>CH343K / 供电"]
   FUSE["PTC / 保险丝"]
   LDO["板载 3.3 V LDO<br/>（当前 USB 路径）"]
-  RAIL3["3.3 V 系统轨<br/>MCU / EPD / MS4030"]
-  AMP5["5 V 功放轨<br/>MAX98357A + 3 W / 4 Ω"]
+  RAIL3["3.3 V 系统轨<br/>MCU / EPD / LMD2718"]
+  AMP5["5 V 功放轨<br/>NS4168 + 8Ω 1W"]
 
-  BATT["1S LiPo 3.7 V<br/>1500–2000 mAh<br/>（计划）"]
-  CHG["TP4056 充电 + 保护<br/>（计划）"]
+  BATT["1S LiPo 3.7 V<br/>2500 mAh<br/>（计划）"]
+  CHG["BQ24074 充电/路径<br/>（计划）"]
   PATH["负载共享 / 理想二极管<br/>（计划）"]
   BOOST["5 V Boost ≥ 1 A<br/>（计划）"]
   BUCK["3.3 V Buck-Boost<br/>（计划）"]

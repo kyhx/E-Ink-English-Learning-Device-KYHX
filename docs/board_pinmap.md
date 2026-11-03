@@ -1,5 +1,7 @@
 # YD-ESP32-S3 / ESP32-S3-N16R8 开发板引脚与接线
 
+> **2026-11-03 说明**：文中的麦克风/功放引脚基于旧台架 MS4030 + MAX98357A。最终音频模块为 **LMD2718 + NS4168**，引脚以厂商 pinout 为准；在新 pinout 确认前，不要把旧音频引脚当作最终设计。
+
 > 依据：`C:\Users\Administrator\Downloads\ESP32-S3-N16R8_User_Guide.pdf`（MICRO ROBOTICS，11 页）
 >
 > 板卡：ESP32-S3-WROOM-1，16 MB Flash + 8 MB Octal PSRAM，双 Type-C。

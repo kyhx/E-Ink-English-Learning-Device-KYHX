@@ -18,10 +18,10 @@ flowchart LR
     direction LR
     UI["5 键 + 400×300 墨水屏<br/>SSD1619A"]
     MCU["ESP32-S3<br/>240 MHz / 16 MB Flash<br/>8 MB PSRAM"]
-    REC["录音 2 s<br/>MS4030 / I2S0"]
+    REC["录音 2 s<br/>LMD2718 模块 / I2S0"]
     AI["TinyMelNet int8<br/>6,066 参数 / 11.5 KB<br/>（待接 TFLM）"]
     FS["LittleFS 10 MB<br/>WAV + labels.csv"]
-    PLAY["回放<br/>MAX98357A / I2S1"]
+    PLAY["回放<br/>NS4168 模块 / I2S1"]
   end
 
   USR <--> UI
