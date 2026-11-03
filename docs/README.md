@@ -37,7 +37,7 @@
 | [`局刷测试记录.md`](局刷测试记录.md) | 全部刷新实验数据与波形分析 |
 | [`真局部研究.md`](真局部研究.md) | 70 行带状真局刷的边界与 datasheet 依据 |
 | [`HINK-E042A13-A0资料汇总.md`](HINK-E042A13-A0资料汇总.md) | 4.2" 屏体资料汇总 |
-| [`datasheets/`](datasheets/) | SSD1619A、GDEH042Z96 规格书 |
+| [`datasheets/`](datasheets/) | 按 MCU/显示/音频/USB/电源/保护分类的芯片手册 |
 
 ## 数据与模型
 

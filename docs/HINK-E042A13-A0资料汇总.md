@@ -72,8 +72,8 @@ HINK-E042A13-A0   Date: 2017-4-24   SYX832
 
 本地已保存：
 
-- [`datasheets/GDEH042Z96_spec.pdf`](datasheets/GDEH042Z96_spec.pdf)
-- [`datasheets/SSD1619A_spec.pdf`](datasheets/SSD1619A_spec.pdf)
+- [`datasheets/02-display/GDEH042Z96_spec.pdf`](datasheets/02-display/GDEH042Z96_spec.pdf)
+- [`datasheets/02-display/SSD1619A_spec.pdf`](datasheets/02-display/SSD1619A_spec.pdf)
 
 ---
 
