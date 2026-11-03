@@ -21,6 +21,7 @@
 | [`交接文档.md`](交接文档.md) | 当前进度、踩坑、下一步（新人先读） |
 | [`技术方案.md`](技术方案.md) | 驱动方案、SPI/时序/局刷细节 |
 | [`board_pinmap.md`](board_pinmap.md) | YD-ESP32-S3 P1/P2 引脚、音频/屏/按键接线 |
+| [`pcb_references.md`](pcb_references.md) | 可借鉴的 ESP32-S3/EPD/音频/电源原理图与 PCB 项目网址 |
 | [`M0测试记录.md`](M0测试记录.md) | M0 分区/LittleFS/按键/bench/E0 实测 |
 | [`M2测试记录.md`](M2测试记录.md) | M2 音频链：录音/WAV/VAD/20 条/清屏/音量 |
 
