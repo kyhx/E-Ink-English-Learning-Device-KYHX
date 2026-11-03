@@ -7,9 +7,9 @@
 
 > 文档导航：[`docs/README.md`](docs/README.md)（硬件/数据/模型/论文/动画索引）。
 
-> **项目基调（2026-11-03）**：**就业优先，毕设必须完成**。
+> **项目基调（2026-11-03）**：**主要目的就业；底线是毕设完整交付**。
 > 技术定位是**端侧 AI / TinyML 工程实践**，不是算法理论创新。
-> 详细取舍见 [`docs/项目定位.md`](docs/项目定位.md)。
+> 执行总纲见 [`毕设基调.md`](毕设基调.md)，取舍摘要见 [`docs/项目定位.md`](docs/项目定位.md)。
 
 纸质单词书内容固定、检索不便，难以按遗忘规律安排复习，携带与翻阅成本较高；手机背单词 App
 虽然检索与调度能力强，但依赖高亮背光屏幕，长时间近距离使用易造成视觉疲劳，且功能高度依赖
@@ -148,6 +148,8 @@ E-Ink-English-Learning-Device-KYHX/
 ├── sdkconfig                       # 实测通过的完整配置（CPU 240MHz、FreeRTOS 1000Hz）
 ├── partitions.csv                  # nvs / phy_init / factory(3MB) / storage(10MB littlefs)
 ├── main/idf_component.yml          # 托管组件：littlefs / TFLM / esp-dsp
+├── 毕设基调.md                     # 执行总纲：需求/验收/求职策略
+├── plan.md                         # 实施计划与里程碑
 ├── .clangd                         # clangd 过滤 -f* -m*
 ├── artifacts/                      # 生成物（gitignore，仅 README 入库）
 │   ├── README.md                   # 模型/数据/固件/日志地图
@@ -424,16 +426,15 @@ void app_main(void) {
 
 ---
 
-## 9. 下一步
+## 9. 下一步（规则法保底，TFLM/PCB 做就业信号）
 
-1. 处理上面的 AGPL 许可证问题（发布前必做）；
-2. **音频模块收尾**：拿到 LMD2718+NS4168 的 pinout，确认 5V 与 I2S，8Ω 1W 测 SPL/失真；再真人录 20 条 2 s；
-3. **M1**：接入 100 词词库/音频/字库，把录音页换成页面管理器 + 单词卡；
-4. **M1**：Leitner 分级复习 + 学习记录（LittleFS 环形）；
-5. 停留/空闲用 light sleep 或 tickless idle，CPU 240 → 160/80 MHz；
-6. 清洁周期改自适应（每 20–30 次刷新，或残影明显时）；
-7. 补功耗与残影实测（INA219 / PPK2 或 USB 电流表）；
-8. 人工确认 5 键短按/长按（`bench keys 5`），并补到 `docs/M0测试记录.md`；
-9. 评估 SPI 4 → 10 MHz（缩短 15000 字节写入时间）。
+1. **音频模块收尾**：拿到 LMD2718+NS4168 的 pinout，确认 5V 与 I2S，8Ω 1W 测 SPL/失真；
+2. **规则法保底**：YIN/DTW + 最小 SoftAP + CSV/JSON 同步，保证毕设有完整闭环；
+3. **数据最低线**：200 条设备自采 + 说话人独立 + 标注记录；
+4. **TFLM 闭环**：录音→VAD→Mel→int8→结果页，记录延迟/RAM/Flash；
+5. **自绘 PCB**：WROOM-1-N16R8 + EPD + 音频模块 + BQ24074/TPS63020/5V Boost；
+6. **测试报告**：3.3V/5V 纹波、1W 音频、边充边用、刷新/功耗、休眠；
+7. **论文/求职**：两法对照、演示视频、简历、投递；
+8. **发布前**：处理 AGPL partial LUT 许可证问题。
 
-详细交接与风险清单见 [`docs/交接文档.md`](docs/交接文档.md)。
+> 详细执行总纲与验收清单见 [`毕设基调.md`](毕设基调.md)。
