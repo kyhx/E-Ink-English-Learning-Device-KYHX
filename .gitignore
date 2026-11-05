@@ -79,3 +79,7 @@ third_party/
 # Generated artifacts (models/data/firmware/logs); keep the map only
 artifacts/*
 !artifacts/README.md
+
+# Word/Office 临时锁文件
+~$*
+~WRL*.tmp
