@@ -35,6 +35,7 @@
 #include "collect.h"
 #include "bench.h"
 #include "board/buttons.h"
+#include "panel1680_test.h"
 #include "services/storage.h"
 
 static const char *TAG = "main";
@@ -145,12 +146,19 @@ void app_main(void)
     }
 
     const epd_config_t cfg = EPD_S3_DEFAULT_CONFIG();
+    (void)cfg;
+
+#if CONFIG_APP_MODE_EPD1680
+    /* 2.9" SSD1680 自检模式：完全不碰 4.2" 驱动，避免两套初始化互相干扰 */
+    panel1680_test_run();
+#else
     epd_init(&cfg);
 
     if (!epd_partial_init(epd_lut_partial_70)) {
         ESP_LOGE(TAG, "partial init failed; display unavailable");
         return;
     }
+#endif
 
     err = storage_init();
     if (err != ESP_OK) {
@@ -176,7 +184,13 @@ void app_main(void)
     }
 #endif
 
-#if CONFIG_APP_MODE_DEMO
+#if CONFIG_APP_MODE_EPD1680
+    /* 自检已跑完，屏幕保持最后一帧；bench 控制台继续可用 */
+    ESP_LOGI(TAG, "panel test done; `bench epd1680 ...` available");
+    for (;;) {
+        vTaskDelay(pdMS_TO_TICKS(1000));
+    }
+#elif CONFIG_APP_MODE_DEMO
     demo_run();
 #elif CONFIG_APP_MODE_COLLECT
     collect_run();    /* does not return */

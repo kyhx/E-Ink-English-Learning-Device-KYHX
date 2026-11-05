@@ -13,8 +13,10 @@ idf_component_register(
          "services/audio_analysis.c"
          "collect/collect.c"
          "bench/bench.c"
-    INCLUDE_DIRS "." "board" "services" "bench" "ui" "collect"
+         "panel_test/panel1680_test.c"
+    INCLUDE_DIRS "." "board" "services" "bench" "ui" "collect" "panel_test"
     REQUIRES epd_ssd1619a
+             epd_ssd1680
              esp_driver_gpio
              esp_driver_spi
              esp_driver_uart

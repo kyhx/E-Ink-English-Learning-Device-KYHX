@@ -43,6 +43,7 @@
 #include "collect.h"
 #include "epd_lut_partial.h"
 #include "epd_ssd1619a.h"
+#include "epd_ssd1680.h"
 #include "storage.h"
 #include "word_view.h"
 
@@ -756,6 +757,156 @@ static void print_bench_usage(void)
     printf("  bench selftest\n");
 }
 
+/* ------------------------------------------- 2.9" SSD1680 (ZJY128296) */
+
+static uint8_t s_p1680_fb[EPD1680_FRAME_BYTES];
+static uint8_t s_p1680_win[EPD1680_FRAME_BYTES];
+static bool s_p1680_ready;
+
+static void p1680_draw_base(void)
+{
+    epd1680_fb_clear(s_p1680_fb, 1);
+    epd1680_fb_rect(s_p1680_fb, 0, 0, EPD1680_WIDTH, EPD1680_HEIGHT, 0);
+    epd1680_fb_text_scaled(s_p1680_fb, 8, 10, "SSD1680", 0, 2);
+    epd1680_fb_text(s_p1680_fb, 8, 38, "2.9in 128x296", 0);
+    epd1680_fb_text(s_p1680_fb, 8, 50, "ZJY128296-029", 0);
+    epd1680_fb_text(s_p1680_fb, 8, 62, "B/W 1bpp SPI", 0);
+    epd1680_fb_hline(s_p1680_fb, 6, 76, EPD1680_WIDTH - 12, 0);
+
+    for (int y = 84; y < 124; y += 4) {
+        for (int x = 8; x < 120; x += 4) {
+            if (((x / 4) + (y / 4)) & 1) {
+                epd1680_fb_fill_rect(s_p1680_fb, x, y, 4, 4, 0);
+            }
+        }
+    }
+
+    epd1680_fb_text(s_p1680_fb, 8, 136, "bench epd1680", 0);
+    epd1680_fb_text(s_p1680_fb, 8, 150, "partial window:", 0);
+    epd1680_fb_fill_rect(s_p1680_fb, 0, 200, EPD1680_WIDTH, 40, 1);
+    epd1680_fb_hline(s_p1680_fb, 0, 200, EPD1680_WIDTH, 0);
+    epd1680_fb_hline(s_p1680_fb, 0, 239, EPD1680_WIDTH, 0);
+    epd1680_fb_text(s_p1680_fb, 8, 210, "PARTIAL 0", 0);
+    epd1680_fb_text(s_p1680_fb, 8, 256, "if inverted:", 0);
+    epd1680_fb_text(s_p1680_fb, 8, 268, "  bench epd1680 invert 1", 0);
+}
+
+static void p1680_usage(void)
+{
+    printf("usage:\n");
+    printf("  bench epd1680 info\n");
+    printf("  bench epd1680 init\n");
+    printf("  bench epd1680 white|black|pattern|fast\n");
+    printf("  bench epd1680 partial <x> <y> <w> <h> [text]\n");
+    printf("  bench epd1680 invert <0|1>\n");
+    printf("  bench epd1680 sleep\n");
+}
+
+static int cmd_bench_epd1680(int argc, char **argv)
+{
+    if (argc < 3) {
+        p1680_usage();
+        return 0;
+    }
+    const char *sub = argv[2];
+
+    if (!strcmp(sub, "info")) {
+        printf("\n== epd1680 info ==\n");
+        printf("panel : SSD1680 128x296 (ZJY128296-029EAAMFGN)\n");
+        printf("frame : %d bytes (%d bytes/row)\n", EPD1680_FRAME_BYTES,
+               EPD1680_BYTES_PER_ROW);
+        printf("pins  : sck=%d mosi=%d cs=%d dc=%d rst=%d busy=%d\n",
+               BOARD_EPD_SCK_GPIO, BOARD_EPD_MOSI_GPIO, BOARD_EPD_CS_GPIO,
+               BOARD_EPD_DC_GPIO, BOARD_EPD_RST_GPIO, BOARD_EPD_BUSY_GPIO);
+        printf("state : inited=%d invert=%d busy_level=%d\n", s_p1680_ready,
+               epd1680_get_invert(), epd1680_busy_level());
+        return 0;
+    }
+
+    if (!strcmp(sub, "init")) {
+        int64_t t0 = esp_timer_get_time();
+        s_p1680_ready = epd1680_init(NULL);
+        printf("init: %s %lld ms busy_level=%d\n", s_p1680_ready ? "ok" : "FAIL",
+               (long long)((esp_timer_get_time() - t0) / 1000),
+               epd1680_busy_level());
+        return s_p1680_ready ? 0 : 1;
+    }
+
+    if (!s_p1680_ready) {
+        printf("panel not initialised: run `bench epd1680 init`\n");
+        return 1;
+    }
+
+    if (!strcmp(sub, "invert")) {
+        epd1680_set_invert(argc >= 4 ? atoi(argv[3]) : 1);
+        printf("invert=%d (redraw to see the effect)\n", epd1680_get_invert());
+        return 0;
+    }
+
+    if (!strcmp(sub, "sleep")) {
+        epd1680_sleep();
+        s_p1680_ready = false;
+        printf("deep sleep sent (hw reset needed before next update)\n");
+        return 0;
+    }
+
+    if (!strcmp(sub, "white") || !strcmp(sub, "black")) {
+        epd1680_fb_clear(s_p1680_fb, sub[0] == 'w');
+        int64_t t0 = esp_timer_get_time();
+        bool ok = epd1680_full(s_p1680_fb, 8000);
+        printf("full %s: %s %lld ms\n", sub, ok ? "ok" : "FAIL",
+               (long long)((esp_timer_get_time() - t0) / 1000));
+        return ok ? 0 : 1;
+    }
+
+    if (!strcmp(sub, "pattern") || !strcmp(sub, "fast")) {
+        p1680_draw_base();
+        bool fast = !strcmp(sub, "fast");
+        int64_t t0 = esp_timer_get_time();
+        bool ok = fast ? epd1680_fast(s_p1680_fb, 8000)
+                       : epd1680_full(s_p1680_fb, 8000);
+        printf("%s: %s %lld ms\n", fast ? "fast" : "full", ok ? "ok" : "FAIL",
+               (long long)((esp_timer_get_time() - t0) / 1000));
+        return ok ? 0 : 1;
+    }
+
+    if (!strcmp(sub, "partial")) {
+        int x = argc >= 4 ? atoi(argv[3]) : 0;
+        int y = argc >= 5 ? atoi(argv[4]) : 200;
+        int w = argc >= 6 ? atoi(argv[5]) : 128;
+        int h = argc >= 7 ? atoi(argv[6]) : 40;
+        const char *txt = argc >= 8 ? argv[7] : "PARTIAL";
+
+        if (x < 0 || y < 0 || w <= 0 || h <= 0 || (x % 8) || (w % 8) ||
+            x + w > EPD1680_WIDTH || y + h > EPD1680_HEIGHT) {
+            printf("bad window: x/w must be multiples of 8, inside 128x296\n");
+            return 1;
+        }
+
+        /* 先在整帧上画好窗口内容，再裁出窗口数据 */
+        p1680_draw_base();
+        epd1680_fb_fill_rect(s_p1680_fb, x, y, w, h, 1);
+        epd1680_fb_text_scaled(s_p1680_fb, x + 4, y + 6, txt, 0, 2);
+
+        int bpr = w / 8;
+        for (int j = 0; j < h; j++) {
+            memcpy(&s_p1680_win[j * bpr],
+                   &s_p1680_fb[(y + j) * EPD1680_BYTES_PER_ROW + (x / 8)],
+                   (size_t)bpr);
+        }
+
+        int64_t t0 = esp_timer_get_time();
+        bool ok = epd1680_partial(s_p1680_win, x, y, w, h, 8000);
+        printf("partial %d,%d %dx%d: %s %lld ms\n", x, y, w, h,
+               ok ? "ok" : "FAIL",
+               (long long)((esp_timer_get_time() - t0) / 1000));
+        return ok ? 0 : 1;
+    }
+
+    p1680_usage();
+    return 1;
+}
+
 static int cmd_bench(int argc, char **argv)
 {
     if (argc < 2) {
@@ -763,6 +914,9 @@ static int cmd_bench(int argc, char **argv)
         return 0;
     }
 
+    if (!strcmp(argv[1], "epd1680")) {
+        return cmd_bench_epd1680(argc, argv);
+    }
     if (!strcmp(argv[1], "info")) {
         return cmd_bench_info();
     }
@@ -783,6 +937,12 @@ static int cmd_bench(int argc, char **argv)
         return cmd_bench_collect(argc, argv);
     }
     if (!strcmp(argv[1], "display")) {
+#if CONFIG_APP_MODE_EPD1680
+        /* 2.9" SSD1680 模式下 4.2" 驱动未初始化，禁止走老的显示命令 */
+        printf("4.2in display commands are disabled in APP_MODE_EPD1680; "
+               "use `bench epd1680`\n");
+        return 1;
+#endif
         if (argc < 3) {
             print_bench_usage();
             return 1;

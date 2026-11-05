@@ -16,6 +16,18 @@ menu "E-Ink English Learning Device"
             Records 2 s WAVs with speaker/word/label/take metadata under
             /storage/collect.  APP_MODE_DEMO has priority if both are set.
 
+    config APP_MODE_EPD1680
+        bool "Run the 2.9\" SSD1680 panel self test at boot"
+        default n
+        help
+            Skip the 4.2" SSD1619A init entirely and boot into the 2.9"
+            SSD1680 (ZJY128296-029EAAMFGN, 128x296) self test: full white,
+            full black, a pattern page, two rectangle partial updates and a
+            fast refresh, each timed and printed on UART0.
+
+            Use `bench epd1680 ...` afterwards for individual steps.
+            APP_MODE_DEMO / APP_MODE_COLLECT are ignored in this mode.
+
     config APP_BENCH
         bool "Enable the UART0 bench console"
         default y
