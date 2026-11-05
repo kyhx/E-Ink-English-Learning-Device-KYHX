@@ -80,10 +80,13 @@ int epd1680_busy_level(void);
 void epd1680_set_invert(bool on);
 bool epd1680_get_invert(void);
 
-/* 整屏全刷（0xF7）。fb 长度必须 >= EPD1680_FRAME_BYTES。 */
+/* 整屏全刷（0xF7）。实测 2023 ms，无残影。fb 长度 >= EPD1680_FRAME_BYTES。 */
 bool epd1680_full(const uint8_t *fb, uint32_t timeout_ms);
 
-/* 整屏快速刷新（0xC7，LUT 已在 init 时预载）。比全刷快，残影略多。 */
+/* 整屏局刷（内部就是 0xFF + 整屏窗口）。实测 468 ms，比全刷快 4.3 倍，
+ * 但会累积残影：连续用 20–30 次后插一次 epd1680_full()。
+ * 注意：这不是 0xC7——实测 0xC7 的波形取决于上一条命令残留的 LUT，
+ * 耗时在 463/2018 ms 之间跳变，已弃用。 */
 bool epd1680_fast(const uint8_t *fb, uint32_t timeout_ms);
 
 /* 矩形局刷（0xFF）。

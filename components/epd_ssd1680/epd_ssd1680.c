@@ -216,6 +216,9 @@ static void display_update(uint8_t ctrl1_byte1, uint8_t mode)
 
 bool epd1680_init(const epd1680_config_t *cfg)
 {
+    if (g_inited) {
+        return true;   /* 重复 init 会打出 GPIO 冲突警告，直接返回 */
+    }
     if (cfg) {
         g_cfg = *cfg;
     } else {
@@ -334,11 +337,10 @@ bool epd1680_full(const uint8_t *fb, uint32_t timeout_ms)
 bool epd1680_fast(const uint8_t *fb, uint32_t timeout_ms)
 {
     if (!g_inited || fb == NULL) return false;
-    set_window(0, 0, EPD1680_WIDTH, EPD1680_HEIGHT);
-    write_ram(CMD_WRITE_RAM_BW, fb, EPD1680_FRAME_BYTES);
-    write_ram(CMD_WRITE_RAM_RED, fb, EPD1680_FRAME_BYTES);
-    display_update(CTRL1_BYPASS, MODE_FAST);
-    return epd1680_wait_busy(timeout_ms);
+    /* 实测（2026-11-05）：0x22=0xC7「不载 LUT」的波形取决于上一条命令残留的
+     * LUT，时间在 463 ms 与 2018 ms 之间跳变，不可作为稳定接口。
+     * 全屏局刷（0xFF）实测 468 ms 且行为确定，因此这里直接用整屏窗口局刷。 */
+    return epd1680_partial(fb, 0, 0, EPD1680_WIDTH, EPD1680_HEIGHT, timeout_ms);
 }
 
 bool epd1680_partial(const uint8_t *win, int x, int y, int w, int h,

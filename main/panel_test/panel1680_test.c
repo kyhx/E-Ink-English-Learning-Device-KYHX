@@ -6,7 +6,7 @@
  *   2) 全白 / 全黑 全刷（0xF7）
  *   3) 图案页全刷（边框 + 标题 + 文本 + 棋盘）
  *   4) 矩形局刷两帧（同一窗口改文字，验证真局刷）
- *   5) 快速刷新（0xC7）计时
+ *   5) 整屏局刷（0xFF，468 ms）计时
  *   6) 输出可直接抄进测试记录的结果行
  *
  * 判定要点（人眼看屏）：
@@ -175,7 +175,7 @@ void panel1680_test_run(void)
     ESP_LOGI(TAG, "partial_2: ok=%d %lld ms", p2, (long long)t_p2);
     vTaskDelay(pdMS_TO_TICKS(1500));
 
-    /* 5) 快速刷新（整屏） */
+    /* 5) 整屏局刷（相当于全屏快刷） */
     draw_pattern();
     t0 = us();
     ok = epd1680_fast(s_fb, TMO_MS);
