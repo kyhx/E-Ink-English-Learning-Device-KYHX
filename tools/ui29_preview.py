@@ -26,28 +26,29 @@ W, H = 296, 128          # 横向：宽 296，高 128
 
 # ------------------------------------------------------------------ 布局常量
 # 这些数值直接照抄进 main/ui29/ui29_card.c，改布局时两边一起改。
+# 卡片页竖向占用 4..122 px，右栏三行 18/42/66，进度条 84，键位条 98..122。
 MARGIN = 4
 INNER = W - 2 * MARGIN          # 288
 
-Y_SBAR = 5                      # 状态栏文字顶
-Y_DIV1 = 16                     # 状态栏下分隔线
+Y_SBAR = 4                      # 状态栏文字顶
+Y_DIV1 = 15                     # 状态栏下分隔线
 
 COL_L = 8                       # 左栏（单词 + 音标）起点
 COL_R = 176                     # 右栏（释义 + 状态）起点
 COL_R_W = W - MARGIN - COL_R    # 116 px -> 7 个汉字
 
-Y_WORD = 21                     # 单词顶（scale 3 -> 24 px 高）
-WORD_SCALE = 3
-Y_IPA = 55                      # 音标顶（20 px 框，基线对齐）
+Y_WORD = 18                     # 单词顶（scale 3 -> 24 px 高）
+WORD_SCALE = 4
+Y_IPA = 58                      # 音标顶（20 px 框，基线对齐）
 
-Y_MEAN = 27                     # 释义顶（16 px，行距 20）
+Y_MEAN = 18
 MEAN_LINE_H = 20
-Y_BIG = 55                      # 状态大字
-Y_SMALL = 81                    # 状态副行
+Y_BIG = 42
+Y_SMALL = 66
 
-Y_BAR = 103                     # 进度条
-BAR_H = 6
-Y_HINT = 115
+Y_BAR = 84
+BAR_H = 8
+Y_HINT = 104
 
 
 class Panel:
@@ -173,7 +174,9 @@ def page_card(p, idx, total, word, ipa, meaning, big, small, f16, f12):
     fill_w = int((INNER - 4) * (idx + 1) / total)
     if fill_w > 0:
         p.fill_rect(MARGIN + 2, Y_BAR + 2, fill_w, BAR_H - 4)
-    p.ascii(MARGIN, Y_HINT, "PREV NEXT PLAY    REC SYNC HOLD")
+    # 底部键位条：画成带边框的条，避免 128 高里出现空带
+    p.rect(MARGIN, Y_HINT - 6, INNER, 24)
+    p.ascii(MARGIN + 6, Y_HINT, "PREV NEXT PLAY    REC SYNC HOLD")
 
 
 def page_home(p, f16, stats):
