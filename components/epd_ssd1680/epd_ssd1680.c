@@ -473,6 +473,12 @@ void epd1680_fb_text_scaled(uint8_t *fb, int x, int y, const char *str,
     }
 }
 
+const uint8_t *epd1680_ascii_glyph(char ch)
+{
+    if (ch < EPD_FONT_FIRST || ch > EPD_FONT_LAST) ch = '?';
+    return font5x7[ch - EPD_FONT_FIRST];
+}
+
 int epd1680_fb_text_width_scaled(const char *str, int scale)
 {
     if (scale < 1) scale = 1;

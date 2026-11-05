@@ -1,13 +1,17 @@
 /*
- * ui29_card.c — 2.9" (128x296) 单词卡界面
+ * ui29_card.c — 2.9" 单词卡界面（横向 296x128）
  *
- * 布局常量与 tools/ui29_preview.py 一一对应：改一边必须改另一边，
- * 否则 PC 预览和实机就对不上了。
+ * 物理屏是 128x296 竖屏：SSD1680 的 gate 固定在 296 行，所以横向显示
+ * 只能把内容旋转 90° 写进同一块帧缓冲。这里所有绘制都走 put_px()，
+ * 由它做「横向逻辑坐标 -> 物理坐标」的映射：
  *
- * 刷新策略：
- *   - 首次上电全刷（2023 ms）建立局刷基准并清残影
- *   - 之后每次换页用整屏局刷（468 ms）
- *   - 每 20 次局刷插一次全刷，压住残影累积
+ *     phys_x = 127 - ly      (0..127，正好是 128 列)
+ *     phys_y = lx            (0..295，正好是 296 行)
+ *
+ * 如果实机上方向倒了/镜像了，用 `bench ui flip <0..3>` 现场翻，不用重烧：
+ *     bit0 = 上下翻（翻转 ly），bit1 = 左右翻（翻转 lx）
+ *
+ * 布局常量与 tools/ui29_preview.py 一一对应：改一边必须改另一边。
  *
  * SPDX-License-Identifier: MIT
  */
@@ -36,23 +40,27 @@
 
 static const char *TAG = "ui29";
 
+/* ---------------------------------------------------------------- 逻辑尺寸 */
+#define LW          296          /* 横向宽（对应物理 296 行） */
+#define LH          128          /* 横向高（对应物理 128 列） */
+
 /* ---------------------------------------------------------------- 布局常量 */
 #define MARGIN      4
-#define INNER       (EPD1680_WIDTH - 2 * MARGIN)   /* 120 */
+#define INNER       (LW - 2 * MARGIN)     /* 288 */
 #define Y_SBAR      2
-#define Y_DIV1      12
-#define Y_WORD      24
-#define WORD_SCALE  4
-#define Y_IPA       60
-#define Y_DIV2      84
-#define Y_MEAN      92
+#define Y_DIV1      13
+#define COL_L       8
+#define COL_R       176
+#define Y_WORD      18
+#define WORD_SCALE  3
+#define Y_IPA       52
+#define Y_MEAN      24
 #define MEAN_LINE_H 20
-#define Y_BOX       148
-#define BOX_H       92
-#define Y_BAR       254
+#define Y_BIG       52
+#define Y_SMALL     78
+#define Y_BAR       100
 #define BAR_H       6
-#define Y_HINT1     268
-#define Y_HINT2     278
+#define Y_HINT      112
 
 #define TMO_MS          8000
 #define FULL_EVERY_N    20
@@ -76,26 +84,79 @@ static page_t s_page;
 static card_state_t s_state;
 static int s_idx;
 static int s_refresh_n;
-static char s_msg[32];        /* 状态框副行（UTF-8） */
-static char s_big[16];        /* 状态框主行（UTF-8） */
+static int s_flip;                    /* bit0: 上下翻, bit1: 左右翻 */
+static volatile bool s_redraw_req;
+static char s_msg[48];
+static char s_big[24];
 
 static uint8_t s_fb[EPD1680_FRAME_BYTES];
 
-/* ---------------------------------------------------------------- 文本绘制 */
+/* ---------------------------------------------------------------- 坐标映射 */
 
-/* 5x7 ASCII（驱动自带）；scale=1 用原函数，scale>1 用放大版 */
-static void draw_ascii(int x, int y, const char *s, int scale)
+static void put_px(int x, int y, int color)
 {
-    if (scale <= 1) {
-        epd1680_fb_text(s_fb, x, y, s, 0);
-    } else {
-        epd1680_fb_text_scaled(s_fb, x, y, s, 0, scale);
-    }
+    if (x < 0 || x >= LW || y < 0 || y >= LH) return;
+
+    int lx = x;
+    int ly = y;
+    if (s_flip & 2) lx = LW - 1 - lx;
+    if (s_flip & 1) ly = LH - 1 - ly;
+
+    int px = (EPD1680_WIDTH - 1) - ly;
+    int py = lx;
+    epd1680_fb_pixel(s_fb, px, py, (uint8_t)color);
 }
+
+static void hline(int x, int y, int w, int color)
+{
+    for (int i = 0; i < w; i++) put_px(x + i, y, color);
+}
+
+static void vline(int x, int y, int h, int color)
+{
+    for (int i = 0; i < h; i++) put_px(x, y + i, color);
+}
+
+static void box_rect(int x, int y, int w, int h, int color)
+{
+    hline(x, y, w, color);
+    hline(x, y + h - 1, w, color);
+    vline(x, y, h, color);
+    vline(x + w - 1, y, h, color);
+}
+
+static void fill_rect(int x, int y, int w, int h, int color)
+{
+    for (int j = 0; j < h; j++) hline(x, y + j, w, color);
+}
+
+/* ---------------------------------------------------------------- 文本绘制 */
 
 static int ascii_w(const char *s, int scale)
 {
-    return (int)strlen(s) * 5 * (scale > 0 ? scale : 1);
+    int sc = scale > 0 ? scale : 1;
+    return (int)strlen(s) * 5 * sc;
+}
+
+static void draw_ascii(int x, int y, const char *s, int scale)
+{
+    int sc = scale > 0 ? scale : 1;
+    int cx = x;
+    for (const char *p = s; *p; p++) {
+        const uint8_t *g = epd1680_ascii_glyph(*p);
+        for (int col = 0; col < 5; col++) {
+            uint8_t bits = g[col];
+            for (int row = 0; row < 8; row++) {
+                if (!(bits & (1u << row))) continue;
+                if (sc == 1) {
+                    put_px(cx + col, y + row, 0);
+                } else {
+                    fill_rect(cx + col * sc, y + row * sc, sc, sc, 0);
+                }
+            }
+        }
+        cx += 5 * sc;
+    }
 }
 
 /* UTF-8 解码：返回码位，*len 为消耗字节数 */
@@ -117,6 +178,18 @@ static uint16_t utf8_next(const char *s, int *len)
     }
     *len = 1;
     return '?';
+}
+
+static int utf8_count(const char *s)
+{
+    int n = 0;
+    while (*s) {
+        int l = 0;
+        (void)utf8_next(s, &l);
+        s += l;
+        n++;
+    }
+    return n;
 }
 
 static const ui29_glyph16_t *find16(uint16_t cp)
@@ -146,10 +219,11 @@ static int text16(int x, int y, const char *s)
         const ui29_glyph16_t *g = find16(cp);
         if (g) {
             for (int j = 0; j < 16; j++) {
-                uint16_t bits = (uint16_t)((g->bmp[j * 2] << 8) | g->bmp[j * 2 + 1]);
+                uint16_t bits = (uint16_t)((g->bmp[j * 2] << 8) |
+                                           g->bmp[j * 2 + 1]);
                 for (int i = 0; i < 16; i++) {
                     if (bits & (1u << (15 - i))) {
-                        epd1680_fb_pixel(s_fb, cx + i, y + j, 0);
+                        put_px(cx + i, y + j, 0);
                     }
                 }
             }
@@ -174,7 +248,7 @@ static int text12(int x, int y, const char *s)
                 uint16_t bits = g->bmp[j];
                 for (int i = 0; i < 12; i++) {
                     if (bits & (1u << (11 - i))) {
-                        epd1680_fb_pixel(s_fb, cx + i, y + j, 0);
+                        put_px(cx + i, y + j, 0);
                     }
                 }
             }
@@ -185,83 +259,48 @@ static int text12(int x, int y, const char *s)
     return cx - x;
 }
 
-static int utf8_count(const char *s)
-{
-    int n = 0;
-    while (*s) {
-        int l = 0;
-        (void)utf8_next(s, &l);
-        s += l;
-        n++;
-    }
-    return n;
-}
-
-/* 居中：给定像素宽算出左边界 */
-static int cx_center(int w)
-{
-    int x = (EPD1680_WIDTH - w) / 2;
-    return x < MARGIN ? MARGIN : x;
-}
-
 /* ---------------------------------------------------------------- 绘制页面 */
 
 static void draw_status_bar(const char *left, const char *right)
 {
     draw_ascii(MARGIN, Y_SBAR, left, 1);
-    draw_ascii(EPD1680_WIDTH - MARGIN - ascii_w(right, 1), Y_SBAR, right, 1);
-    epd1680_fb_hline(s_fb, MARGIN, Y_DIV1, INNER, 0);
+    draw_ascii(LW - MARGIN - ascii_w(right, 1), Y_SBAR, right, 1);
+    hline(MARGIN, Y_DIV1, INNER, 0);
 }
 
 static void draw_progress(int idx, int total)
 {
-    epd1680_fb_rect(s_fb, MARGIN, Y_BAR, INNER, BAR_H, 0);
+    box_rect(MARGIN, Y_BAR, INNER, BAR_H, 0);
     int fill_w = (INNER - 4) * (idx + 1) / total;
     if (fill_w > 0) {
-        epd1680_fb_fill_rect(s_fb, MARGIN + 2, Y_BAR + 2, fill_w, BAR_H - 4, 0);
+        fill_rect(MARGIN + 2, Y_BAR + 2, fill_w, BAR_H - 4, 0);
     }
 }
 
-static void draw_footer(void)
+static void draw_hint(void)
 {
-    draw_ascii(MARGIN, Y_HINT1, "PREV NEXT PLAY", 1);
-    draw_ascii(MARGIN, Y_HINT2, "REC  SYNC HOLD", 1);
+    draw_ascii(MARGIN, Y_HINT, "PREV NEXT PLAY    REC SYNC HOLD", 1);
 }
 
-static void draw_meaning(const char *meaning)
+/* 每行 7 个汉字；横向右栏只有 116 px，多出来的行不再画 */
+static void draw_meaning_1line(const char *meaning)
 {
-    /* 每行 7 个汉字，最多两行 */
     char line[64];
     const char *p = meaning;
-    int y = Y_MEAN;
-    for (int row = 0; row < 2 && *p; row++) {
-        int cnt = 0;
-        size_t used = 0;
-        line[0] = '\0';
-        while (*p && cnt < 7) {
-            int n = 0;
-            (void)utf8_next(p, &n);
-            if (used + (size_t)n + 1 >= sizeof(line)) break;
-            memcpy(line + used, p, (size_t)n);
-            used += (size_t)n;
-            line[used] = '\0';
-            p += n;
-            cnt++;
-        }
-        text16(cx_center(cnt * 16), y, line);
-        y += MEAN_LINE_H;
+    int cnt = 0;
+    size_t used = 0;
+    line[0] = '\0';
+    while (*p && cnt < 7) {
+        int n = 0;
+        (void)utf8_next(p, &n);
+        if (used + (size_t)n + 1 >= sizeof(line)) break;
+        memcpy(line + used, p, (size_t)n);
+        used += (size_t)n;
+        line[used] = '\0';
+        p += n;
+        cnt++;
     }
-}
-
-static void draw_box(const char *big, const char *small)
-{
-    epd1680_fb_rect(s_fb, MARGIN, Y_BOX, INNER, BOX_H, 0);
-    if (big && *big) {
-        text16(cx_center(utf8_count(big) * 16), Y_BOX + 26, big);
-    }
-    if (small && *small) {
-        text16(cx_center(utf8_count(small) * 16), Y_BOX + 56, small);
-    }
+    text16(COL_R, Y_MEAN, line);
 }
 
 static void draw_card_page(void)
@@ -272,62 +311,57 @@ static void draw_card_page(void)
 
     draw_status_bar("UNIT 01", idxbuf);
 
-    int ww = ascii_w(w->word, WORD_SCALE);
-    draw_ascii(cx_center(ww), Y_WORD, w->word, WORD_SCALE);
+    draw_ascii(COL_L, Y_WORD, w->word, WORD_SCALE);
+    text12(COL_L, Y_IPA, w->ipa);
 
-    text12(cx_center(utf8_count(w->ipa) * 10), Y_IPA, w->ipa);
-    epd1680_fb_hline(s_fb, MARGIN, Y_DIV2, INNER, 0);
+    draw_meaning_1line(w->meaning);
+    text16(COL_R, Y_BIG, s_big);
+    if (s_msg[0]) {
+        text16(COL_R, Y_SMALL, s_msg);
+    }
 
-    draw_meaning(w->meaning);
-    draw_box(s_big, s_msg);
     draw_progress(s_idx, UI29_WORD_COUNT);
-    draw_footer();
+    draw_hint();
 }
 
 static void draw_home_page(void)
 {
     draw_status_bar("E-INK WORD", "HOME");
-    draw_ascii(cx_center(ascii_w("DAILY", 3)), 40, "DAILY", 3);
-    text16(cx_center(4 * 16), 84, "单词学习");
+    text16(MARGIN + 4, 28, "单词学习");
+    draw_ascii(MARGIN + 4, 56, "DAILY", 2);
 
-    epd1680_fb_rect(s_fb, MARGIN, 120, INNER, 112, 0);
+    box_rect(150, 24, 138, 72, 0);
     const char *labels[3] = {"TOTAL", "TODAY", "STREAK"};
     char values[3][8];
     snprintf(values[0], sizeof(values[0]), "%d", UI29_WORD_COUNT);
     snprintf(values[1], sizeof(values[1]), "0");
     snprintf(values[2], sizeof(values[2]), "0");
 
-    int y = 136;
+    int y = 32;
     for (int i = 0; i < 3; i++) {
-        draw_ascii(MARGIN + 10, y, labels[i], 1);
-        draw_ascii(EPD1680_WIDTH - MARGIN - 10 - ascii_w(values[i], 1), y,
-                   values[i], 1);
-        /* 虚线分隔 */
-        for (int x = MARGIN + 8; x < EPD1680_WIDTH - MARGIN - 8; x += 5) {
-            epd1680_fb_hline(s_fb, x, y + 14, 3, 0);
+        draw_ascii(160, y, labels[i], 1);
+        draw_ascii(278 - ascii_w(values[i], 1), y, values[i], 1);
+        for (int x = 158; x < 280; x += 5) {
+            hline(x, y + 12, 3, 0);
         }
-        y += 26;
+        y += 20;
     }
-
-    draw_ascii(MARGIN, 250, "PLAY = START", 1);
-    draw_ascii(MARGIN, 262, "SYNC = WIFI", 1);
-    draw_ascii(MARGIN, 274, "HOLD NEXT = UNIT", 1);
+    draw_hint();
 }
 
 static void draw_sync_page(void)
 {
     draw_status_bar("SYNC", "WIFI");
-    text16(cx_center(4 * 16), 40, "无线同步");
+    text16(MARGIN + 4, 26, "无线同步");
+    text16(220, 28, "未启用");
 
-    epd1680_fb_rect(s_fb, MARGIN, 80, INNER, 92, 0);
-    draw_ascii(MARGIN + 8, 92, "SSID", 1);
-    draw_ascii(MARGIN + 8, 104, "EPD-Word-01", 1);
-    draw_ascii(MARGIN + 8, 124, "URL", 1);
-    draw_ascii(MARGIN + 8, 136, "192.168.4.1", 1);
-    draw_ascii(MARGIN + 8, 150, "not enabled yet", 1);
+    box_rect(MARGIN + 4, 52, 200, 44, 0);
+    draw_ascii(MARGIN + 12, 58, "SSID", 1);
+    draw_ascii(MARGIN + 12, 70, "EPD-Word-01", 1);
+    draw_ascii(MARGIN + 110, 58, "URL", 1);
+    draw_ascii(MARGIN + 110, 70, "192.168.4.1", 1);
 
-    text16(cx_center(6 * 16), 200, "按同步键退出");
-    draw_ascii(MARGIN, 250, "SYNC = STOP AP", 1);
+    draw_ascii(MARGIN, Y_HINT, "SYNC = STOP AP", 1);
 }
 
 /* ---------------------------------------------------------------- 刷新 */
@@ -452,11 +486,21 @@ static void play_last(void)
     refresh(false);
 }
 
+/* ---------------------------------------------------------------- 对外调试 */
+
+void ui29_set_flip(int flip)
+{
+    s_flip = flip & 0x3;
+    s_redraw_req = true;
+    ESP_LOGI(TAG, "flip=%d", s_flip);
+}
+
 /* ---------------------------------------------------------------- 主循环 */
 
 void ui29_run(void)
 {
-    ESP_LOGI(TAG, "word card start: %d words", UI29_WORD_COUNT);
+    ESP_LOGI(TAG, "word card start: %d words, landscape %dx%d",
+             UI29_WORD_COUNT, LW, LH);
 
     s_page = PAGE_CARD;
     s_idx = 0;
@@ -476,6 +520,13 @@ void ui29_run(void)
             continue;
         }
         last_poll = now;
+
+        if (s_redraw_req) {
+            s_redraw_req = false;
+            render();
+            refresh(true);
+            continue;
+        }
 
         if (recording && audio_in_is_done()) {
             recording = false;

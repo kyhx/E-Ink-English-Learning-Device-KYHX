@@ -45,6 +45,7 @@
 #include "epd_ssd1619a.h"
 #include "epd_ssd1680.h"
 #include "panel1680_test.h"
+#include "ui29_card.h"
 #include "storage.h"
 #include "word_view.h"
 
@@ -921,6 +922,16 @@ static int cmd_bench(int argc, char **argv)
         return 0;
     }
 
+    if (!strcmp(argv[1], "ui")) {
+        if (argc >= 4 && !strcmp(argv[2], "flip")) {
+            ui29_set_flip(atoi(argv[3]));
+            printf("ui flip=%d (0=normal,1=vflip,2=hflip,3=both)\n",
+                   atoi(argv[3]));
+            return 0;
+        }
+        printf("usage: bench ui flip <0..3>\n");
+        return 1;
+    }
     if (!strcmp(argv[1], "epd1680")) {
         return cmd_bench_epd1680(argc, argv);
     }

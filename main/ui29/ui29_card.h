@@ -16,6 +16,9 @@ extern "C" {
 /* 进入单词卡应用，不返回。需要 storage/audio/buttons 已初始化。 */
 void ui29_run(void);
 
+/* 现场调方向（不用重烧）：bit0 = 上下翻，bit1 = 左右翻。会触发一次全刷。 */
+void ui29_set_flip(int flip);
+
 #ifdef __cplusplus
 }
 #endif

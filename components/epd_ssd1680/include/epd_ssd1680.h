@@ -115,6 +115,10 @@ void epd1680_fb_text_scaled(uint8_t *fb, int x, int y, const char *str,
                             uint8_t color, int scale);
 int  epd1680_fb_text_width_scaled(const char *str, int scale);
 
+/* 取 5x7 ASCII 字模（5 字节，列优先，bit0 = 最上行）。
+ * 供需要自己旋转/变换的 UI 复用同一份字库。ch 超出 ' '..'~' 返回 '?'。 */
+const uint8_t *epd1680_ascii_glyph(char ch);
+
 #ifdef __cplusplus
 }
 #endif
