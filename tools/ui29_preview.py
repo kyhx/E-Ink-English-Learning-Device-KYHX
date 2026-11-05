@@ -30,23 +30,23 @@ W, H = 296, 128          # 横向：宽 296，高 128
 MARGIN = 4
 INNER = W - 2 * MARGIN          # 288
 
-Y_SBAR = 4                      # 状态栏文字顶
-Y_DIV1 = 15                     # 状态栏下分隔线
+Y_SBAR = 3
+Y_DIV1 = 14
 
 COL_L = 8                       # 左栏（单词 + 音标）起点
 COL_R = 176                     # 右栏（释义 + 状态）起点
 COL_R_W = W - MARGIN - COL_R    # 116 px -> 7 个汉字
 
-Y_WORD = 18                     # 单词顶（scale 3 -> 24 px 高）
+Y_WORD = 17
 WORD_SCALE = 4
-Y_IPA = 58                      # 音标顶（20 px 框，基线对齐）
+Y_IPA = 53
 
-Y_MEAN = 18
+Y_MEAN = 17
 MEAN_LINE_H = 20
-Y_BIG = 42
-Y_SMALL = 66
+Y_BIG = 41
+Y_SMALL = 65
 
-Y_BAR = 84
+Y_BAR = 83
 BAR_H = 8
 Y_HINT = 104
 
@@ -175,7 +175,7 @@ def page_card(p, idx, total, word, ipa, meaning, big, small, f16, f12):
     if fill_w > 0:
         p.fill_rect(MARGIN + 2, Y_BAR + 2, fill_w, BAR_H - 4)
     # 底部键位条：画成带边框的条，避免 128 高里出现空带
-    p.rect(MARGIN, Y_HINT - 6, INNER, 24)
+    p.rect(MARGIN, Y_HINT - 6, INNER, 26)
     p.ascii(MARGIN + 6, Y_HINT, "PREV NEXT PLAY    REC SYNC HOLD")
 
 

@@ -47,18 +47,18 @@ static const char *TAG = "ui29";
 /* ---------------------------------------------------------------- 布局常量 */
 #define MARGIN      4
 #define INNER       (LW - 2 * MARGIN)     /* 288 */
-#define Y_SBAR      4
-#define Y_DIV1      15
+#define Y_SBAR      3
+#define Y_DIV1      14
 #define COL_L       8
 #define COL_R       176
-#define Y_WORD      18
+#define Y_WORD      17
 #define WORD_SCALE  4
-#define Y_IPA       58
-#define Y_MEAN      18
+#define Y_IPA       53
+#define Y_MEAN      17
 #define MEAN_LINE_H 20
-#define Y_BIG       42
-#define Y_SMALL     66
-#define Y_BAR       84
+#define Y_BIG       41
+#define Y_SMALL     65
+#define Y_BAR       83
 #define BAR_H       8
 #define Y_HINT      104
 
@@ -285,7 +285,7 @@ static void draw_hint(void)
 /* 卡片页底部：键位条画成带框的条，把 128 px 高度用满 */
 static void draw_footer_bar(void)
 {
-    box_rect(MARGIN, Y_HINT - 6, INNER, 24, 0);
+    box_rect(MARGIN, Y_HINT - 6, INNER, 26, 0);
     draw_ascii(MARGIN + 6, Y_HINT, "PREV NEXT PLAY    REC SYNC HOLD", 1);
 }
 
