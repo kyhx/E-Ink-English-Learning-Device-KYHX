@@ -83,3 +83,6 @@ artifacts/*
 # Word/Office 临时锁文件
 ~$*
 ~WRL*.tmp
+
+# 预览调试临时图
+docs/_dbg.png
