@@ -47,20 +47,20 @@ static const char *TAG = "ui29";
 /* ---------------------------------------------------------------- 布局常量 */
 #define MARGIN      4
 #define INNER       (LW - 2 * MARGIN)     /* 288 */
-#define Y_SBAR      2
-#define Y_DIV1      13
+#define Y_SBAR      5
+#define Y_DIV1      16
 #define COL_L       8
 #define COL_R       176
-#define Y_WORD      18
+#define Y_WORD      21
 #define WORD_SCALE  3
-#define Y_IPA       52
-#define Y_MEAN      24
+#define Y_IPA       55
+#define Y_MEAN      27
 #define MEAN_LINE_H 20
-#define Y_BIG       52
-#define Y_SMALL     78
-#define Y_BAR       100
+#define Y_BIG       55
+#define Y_SMALL     81
+#define Y_BAR       103
 #define BAR_H       6
-#define Y_HINT      112
+#define Y_HINT      115
 
 #define TMO_MS          8000
 #define FULL_EVERY_N    20

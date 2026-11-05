@@ -29,25 +29,25 @@ W, H = 296, 128          # 横向：宽 296，高 128
 MARGIN = 4
 INNER = W - 2 * MARGIN          # 288
 
-Y_SBAR = 2                      # 状态栏文字顶
-Y_DIV1 = 13                     # 状态栏下分隔线
+Y_SBAR = 5                      # 状态栏文字顶
+Y_DIV1 = 16                     # 状态栏下分隔线
 
 COL_L = 8                       # 左栏（单词 + 音标）起点
 COL_R = 176                     # 右栏（释义 + 状态）起点
 COL_R_W = W - MARGIN - COL_R    # 116 px -> 7 个汉字
 
-Y_WORD = 20                     # 单词顶（scale 3 -> 24 px 高）
+Y_WORD = 21                     # 单词顶（scale 3 -> 24 px 高）
 WORD_SCALE = 3
-Y_IPA = 52                      # 音标顶（20 px 框，基线对齐）
+Y_IPA = 55                      # 音标顶（20 px 框，基线对齐）
 
-Y_MEAN = 24                     # 释义顶（16 px，行距 20）
+Y_MEAN = 27                     # 释义顶（16 px，行距 20）
 MEAN_LINE_H = 20
-Y_BIG = 52                      # 状态大字
-Y_SMALL = 78                    # 状态副行
+Y_BIG = 55                      # 状态大字
+Y_SMALL = 81                    # 状态副行
 
-Y_BAR = 100                     # 进度条
+Y_BAR = 103                     # 进度条
 BAR_H = 6
-Y_HINT = 112
+Y_HINT = 115
 
 
 class Panel:
