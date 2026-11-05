@@ -28,6 +28,7 @@
 #include "sdkconfig.h"
 
 #include "epd_lut_partial.h"
+#include "epd_ssd1680.h"
 #include "epd_ssd1619a.h"
 
 #include "app_state.h"
@@ -36,6 +37,7 @@
 #include "bench.h"
 #include "board/buttons.h"
 #include "panel1680_test.h"
+#include "ui29_card.h"
 #include "services/storage.h"
 
 static const char *TAG = "main";
@@ -149,8 +151,12 @@ void app_main(void)
     (void)cfg;
 
 #if CONFIG_APP_MODE_EPD1680
-    /* 2.9" SSD1680 自检模式：完全不碰 4.2" 驱动，避免两套初始化互相干扰 */
-    panel1680_test_run();
+    /* 2.9" SSD1680 单词卡：完全不碰 4.2" 驱动，避免两套初始化互相干扰。
+     * 面板自检改由 `bench epd1680 test` 触发。 */
+    if (!epd1680_init(NULL)) {
+        ESP_LOGE(TAG, "SSD1680 init failed; check wiring/3V3/BUSY");
+        panel1680_test_run();
+    }
 #else
     epd_init(&cfg);
 
@@ -185,11 +191,7 @@ void app_main(void)
 #endif
 
 #if CONFIG_APP_MODE_EPD1680
-    /* 自检已跑完，屏幕保持最后一帧；bench 控制台继续可用 */
-    ESP_LOGI(TAG, "panel test done; `bench epd1680 ...` available");
-    for (;;) {
-        vTaskDelay(pdMS_TO_TICKS(1000));
-    }
+    ui29_run();       /* does not return */
 #elif CONFIG_APP_MODE_DEMO
     demo_run();
 #elif CONFIG_APP_MODE_COLLECT

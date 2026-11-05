@@ -44,6 +44,7 @@
 #include "epd_lut_partial.h"
 #include "epd_ssd1619a.h"
 #include "epd_ssd1680.h"
+#include "panel1680_test.h"
 #include "storage.h"
 #include "word_view.h"
 
@@ -835,6 +836,12 @@ static int cmd_bench_epd1680(int argc, char **argv)
     if (!s_p1680_ready) {
         printf("panel not initialised: run `bench epd1680 init`\n");
         return 1;
+    }
+
+    if (!strcmp(sub, "test")) {
+        panel1680_test_run();
+        s_p1680_ready = true;
+        return 0;
     }
 
     if (!strcmp(sub, "invert")) {
