@@ -19,6 +19,9 @@ void ui29_run(void);
 /* 现场调方向（不用重烧）：bit0 = 上下翻，bit1 = 左右翻。会触发一次全刷。 */
 void ui29_set_flip(int flip);
 
+/* 调试用：直接跳到某页（0=菜单 1=单词 2=日历 3=同步 4=设置）。 */
+void ui29_goto(int page);
+
 #ifdef __cplusplus
 }
 #endif

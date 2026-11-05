@@ -923,13 +923,19 @@ static int cmd_bench(int argc, char **argv)
     }
 
     if (!strcmp(argv[1], "ui")) {
+        if (argc >= 4 && !strcmp(argv[2], "page")) {
+            ui29_goto(atoi(argv[3]));
+            printf("ui page=%d (0=menu 1=card 2=cal 3=sync 4=settings)\n",
+                   atoi(argv[3]));
+            return 0;
+        }
         if (argc >= 4 && !strcmp(argv[2], "flip")) {
             ui29_set_flip(atoi(argv[3]));
             printf("ui flip=%d (0=normal,1=vflip,2=hflip,3=both)\n",
                    atoi(argv[3]));
             return 0;
         }
-        printf("usage: bench ui flip <0..3>\n");
+        printf("usage: bench ui page <0..4> | flip <0..3>\n");
         return 1;
     }
     if (!strcmp(argv[1], "epd1680")) {

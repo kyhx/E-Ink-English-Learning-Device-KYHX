@@ -1,16 +1,17 @@
 #!/usr/bin/env python3
 """渲染 2.9" 单词卡 UI 预览（横向 296x128），像素级复刻 C 端布局。
 
-物理屏是 128x296 竖屏；横向使用 = 内容旋转 90° 后写进同一帧缓冲，
-C 端由 ui29_card.c 的坐标映射完成，这里直接按横向逻辑坐标绘制。
+页面：主菜单 / 单词卡 / 复习日历 / 同步 / 设置。
 
 用法：
     .venv-train\\Scripts\\python.exe tools/ui29_preview.py
 产物：
-    docs/ui29_preview.png   五个页面竖向堆叠，放大 3 倍
+    docs/ui29_preview.png   五页竖向堆叠，放大 3 倍
 """
 from __future__ import annotations
 
+import calendar
+import datetime
 import os
 import sys
 
@@ -22,43 +23,40 @@ import ui29_assets as A  # noqa: E402
 from font5x7_ascii import GLYPHS  # noqa: E402
 
 # ------------------------------------------------------------------ 逻辑尺寸
-W, H = 296, 128          # 横向：宽 296，高 128
+W, H = 296, 128
 
 # ------------------------------------------------------------------ 布局常量
 # 这些数值直接照抄进 main/ui29/ui29_card.c，改布局时两边一起改。
-# 卡片页竖向占用 4..122 px，右栏三行 18/42/66，进度条 84，键位条 98..122。
-MARGIN = 4
-INNER = W - 2 * MARGIN          # 288
-
+MARGIN = 3
+INNER = W - 2 * MARGIN          # 290
 Y_SBAR = 3
 Y_DIV1 = 14
 
-COL_L = 8                       # 左栏（单词 + 音标）起点
-COL_R = 176                     # 右栏（释义 + 状态）起点
-COL_R_W = W - MARGIN - COL_R    # 116 px -> 7 个汉字
+# 菜单
+MENU_X = 12
+MENU_Y = 18
+MENU_ROW_H = 26
+MENU_ROWS = 4
 
-Y_WORD = 17
+# 单词卡
+COL_L = 8
+Y_WORD = 18
 WORD_SCALE = 4
-Y_IPA = 53
-
-Y_MEAN = 17
-MEAN_LINE_H = 20
-Y_BIG = 41
-Y_SMALL = 65
-
-Y_BAR = 83
+Y_ROW2 = 56                    # 音标 + 释义同一行
+Y_BAR = 86
 BAR_H = 8
-Y_HINT = 104
+Y_HINT = 106
+
+# 通用
+CJK = 24                       # 汉字字身高
+IPA_ADV = A.IPA_ADVANCE        # 12
 
 
 class Panel:
-    """1bpp 画布，坐标系与 C 端横向逻辑坐标一致。"""
-
     def __init__(self):
         self.img = Image.new("L", (W, H), 255)
         self.d = ImageDraw.Draw(self.img)
 
-    # ---------------------------------------------------------- 基本图元
     def px(self, x, y, color=1):
         if 0 <= x < W and 0 <= y < H:
             self.img.putpixel((x, y), 0 if color else 255)
@@ -80,14 +78,8 @@ class Panel:
     def fill_rect(self, x, y, w, h, color=1):
         self.d.rectangle([x, y, x + w - 1, y + h - 1], fill=0 if color else 255)
 
-    def dash_hline(self, x, y, w, on=3, off=2):
-        i = 0
-        while i < w:
-            self.hline(x + i, y, min(on, w - i))
-            i += on + off
-
     # ---------------------------------------------------------- 5x7 ASCII
-    def ascii(self, x, y, text, scale=1):
+    def ascii(self, x, y, text, scale=1, color=1):
         cx = x
         for ch in text:
             idx = ord(ch) - 0x20
@@ -99,35 +91,35 @@ class Panel:
                 for row in range(8):
                     if bits & (1 << row):
                         if scale == 1:
-                            self.px(cx + col, y + row)
+                            self.px(cx + col, y + row, color)
                         else:
                             self.fill_rect(cx + col * scale, y + row * scale,
-                                           scale, scale)
+                                           scale, scale, color)
             cx += 5 * scale
         return cx - x
 
     def ascii_width(self, text, scale=1):
         return len(text) * 5 * scale
 
-    # ---------------------------------------------------------- 16x16 汉字
-    def glyph16(self, x, y, ch, table):
+    # ---------------------------------------------------------- 24x24 汉字
+    def glyph24(self, x, y, ch, table, color=1):
         rows = table.get(ch)
         if rows is None:
             return
         for j, bits in enumerate(rows):
-            for i in range(16):
-                if bits & (1 << (15 - i)):
-                    self.px(x + i, y + j)
+            for i in range(24):
+                if bits & (1 << (23 - i)):
+                    self.px(x + i, y + j, color)
 
-    def text16(self, x, y, text, table):
+    def text24(self, x, y, text, table, color=1):
         cx = x
         for ch in text:
-            self.glyph16(cx, y, ch, table)
-            cx += 16
+            self.glyph24(cx, y, ch, table, color)
+            cx += CJK
         return cx - x
 
-    # ---------------------------------------------------------- 12x20 IPA
-    def glyph12(self, x, y, ch, table):
+    # ---------------------------------------------------------- 14x24 音标
+    def glyph14(self, x, y, ch, table):
         rows = table.get(ch)
         if rows is None:
             return
@@ -136,118 +128,165 @@ class Panel:
                 if bits & (1 << (A.IPA_CELL_W - 1 - i)):
                     self.px(x + i, y + j)
 
-    def text12(self, x, y, text, table):
+    def text14(self, x, y, text, table):
         cx = x
         for ch in text:
-            self.glyph12(cx, y, ch, table)
-            cx += A.IPA_ADVANCE
+            self.glyph14(cx, y, ch, table)
+            cx += IPA_ADV
         return cx - x
 
-    def text12_width(self, text):
-        return len(text) * A.IPA_ADVANCE
+    def text14_width(self, text):
+        return len(text) * IPA_ADV
 
 
-# ------------------------------------------------------------------ 页面
-def status_bar(p: Panel, left: str, right: str):
+# ------------------------------------------------------------------ 公共件
+def status_bar(p, left, right):
     p.ascii(MARGIN, Y_SBAR, left)
     p.ascii(W - MARGIN - p.ascii_width(right), Y_SBAR, right)
     p.hline(MARGIN, Y_DIV1, INNER)
 
 
-def page_card(p, idx, total, word, ipa, meaning, big, small, f16, f12):
+def footer(p, text):
+    p.rect(MARGIN, Y_HINT - 8, INNER, 24)
+    p.ascii(MARGIN + 6, Y_HINT, text)
+
+
+# ------------------------------------------------------------------ 页面
+def page_menu(p, items, sel, f24):
+    status_bar(p, "E-INK WORD", "MENU")
+    for i, item in enumerate(items):
+        y = MENU_Y + i * MENU_ROW_H
+        if i == sel:
+            p.fill_rect(MARGIN, y - 2, INNER, MENU_ROW_H - 2)
+            p.text24(MENU_X, y, item, f24, color=0)
+            # 右侧箭头
+            p.ascii(W - MARGIN - 12, y + 8, ">", 1, color=0)
+        else:
+            p.text24(MENU_X, y, item, f24)
+            p.ascii(W - MARGIN - 12, y + 8, ">", 1)
+
+
+def page_card(p, idx, total, word, ipa, meaning, f24, f14):
     status_bar(p, "UNIT 01", "%02d/%02d" % (idx + 1, total))
-
-    # 左栏：单词 + 音标
     p.ascii(COL_L, Y_WORD, word, WORD_SCALE)
-    p.text12(COL_L, Y_IPA, ipa, f12)
 
-    # 右栏：释义 + 状态
-    lines = [meaning[i:i + 7] for i in range(0, len(meaning), 7)][:1]
-    for i, line in enumerate(lines):
-        p.text16(COL_R, Y_MEAN + i * MEAN_LINE_H, line, f16)
-    p.text16(COL_R, Y_BIG, big, f16)
-    if small:
-        p.text16(COL_R, Y_SMALL, small, f16)
+    # 音标 + 释义同一行
+    p.text14(COL_L, Y_ROW2, ipa, f14)
+    mw = len(meaning) * CJK
+    mx = COL_L + p.text14_width(ipa) + 14
+    if mx + mw > W - MARGIN:
+        mx = W - MARGIN - mw
+    p.text24(mx, Y_ROW2, meaning, f24)
 
-    # 底部：进度 + 提示
     p.rect(MARGIN, Y_BAR, INNER, BAR_H)
-    fill_w = int((INNER - 4) * (idx + 1) / total)
-    if fill_w > 0:
-        p.fill_rect(MARGIN + 2, Y_BAR + 2, fill_w, BAR_H - 4)
-    # 底部键位条：画成带边框的条，避免 128 高里出现空带
-    p.rect(MARGIN, Y_HINT - 6, INNER, 26)
-    p.ascii(MARGIN + 6, Y_HINT, "PREV NEXT PLAY    REC SYNC HOLD")
+    fill = int((INNER - 4) * (idx + 1) / total)
+    if fill:
+        p.fill_rect(MARGIN + 2, Y_BAR + 2, fill, BAR_H - 4)
+    footer(p, "PREV NEXT PLAY   REC SYNC HOLD")
 
 
-def page_home(p, f16, stats):
-    status_bar(p, "E-INK WORD", "HOME")
-    p.text16(MARGIN + 4, 28, "单词学习", f16)
-    p.ascii(MARGIN + 4, 56, "DAILY", 2)
+def page_calendar(p, today, reviewed, f24):
+    status_bar(p, "CALENDAR", "%d-%02d  SYNC=BACK" % (today.year, today.month))
 
-    p.rect(150, 24, 138, 72)
-    rows = [("TOTAL", stats["total"]), ("TODAY", stats["today"]),
-            ("STREAK", stats["streak"])]
-    y = 32
-    for label, value in rows:
-        p.ascii(160, y, label)
-        txt = str(value)
-        p.ascii(278 - p.ascii_width(txt), y, txt)
-        p.dash_hline(158, y + 12, 122)
-        y += 20
+    # 星期表头：24px 汉字，7 列等宽
+    wd = "日一二三四五六"
+    cell_w = (INNER) // 7          # 41
+    for i, ch in enumerate(wd):
+        p.text24(MARGIN + i * cell_w + (cell_w - CJK) // 2, 15, ch, f24)
 
-    p.ascii(MARGIN, Y_HINT, "PLAY=START  SYNC=WIFI  HOLD NEXT=UNIT")
+    first_wd = (datetime.date(today.year, today.month, 1).weekday() + 1) % 7
+    ndays = calendar.monthrange(today.year, today.month)[1]
+    y0 = 41
+    row_h = 14
+
+    for d in range(1, ndays + 1):
+        slot = first_wd + d - 1
+        r, c = divmod(slot, 7)
+        if r >= 6:
+            break
+        cx = MARGIN + c * cell_w
+        cy = y0 + r * row_h
+        txt = str(d)
+        tw = p.ascii_width(txt)
+        x = cx + (cell_w - tw) // 2
+        if d in reviewed:
+            # 已复习：黑底白字
+            p.fill_rect(cx + 8, cy, cell_w - 16, 11)
+            p.ascii(x, cy + 2, txt, 1, color=0)
+        else:
+            p.ascii(x, cy + 2, txt, 1)
+        if d == today.day:
+            p.rect(cx + 6, cy - 1, cell_w - 12, 13)
 
 
-def page_sync(p, f16, ssid, url):
+
+def page_sync(p, ssid, url, f24):
     status_bar(p, "SYNC", "WIFI")
-    p.text16(MARGIN + 4, 26, "无线同步", f16)
-    p.rect(MARGIN + 4, 52, 200, 44)
-    p.ascii(MARGIN + 12, 58, "SSID")
-    p.ascii(MARGIN + 12, 70, ssid)
-    p.ascii(MARGIN + 110, 58, "URL")
-    p.ascii(MARGIN + 110, 70, url)
-    p.text16(220, 28, "未启用", f16)
-    p.ascii(MARGIN, Y_HINT, "SYNC = STOP AP")
+    p.text24(MARGIN, 18, "无线同步", f24)
+    p.ascii(MARGIN, 50, "SSID")
+    p.ascii(MARGIN + 44, 50, ssid)
+    p.ascii(MARGIN, 64, "URL")
+    p.ascii(MARGIN + 44, 64, url)
+    p.text24(MARGIN, 80, "未启用", f24)
+    p.ascii(MARGIN, Y_HINT + 4, "SYNC = 返回主菜单".replace("返回主菜单", "BACK"))
+
+
+def page_settings(p, f24, sel):
+    status_bar(p, "SETTINGS", "MENU")
+    rows = [("无线网络", "关闭"), ("蓝牙", "关闭")]
+    for i, (label, state) in enumerate(rows):
+        y = 18 + i * 38
+        if i == sel:
+            p.rect(MARGIN, y - 2, INNER, 30)
+        p.text24(MARGIN + 10, y, label, f24)
+        sw = len(state) * CJK
+        p.text24(W - MARGIN - 10 - sw, y, state, f24)
+    p.ascii(MARGIN, Y_HINT + 4, "PLAY = TOGGLE   SYNC = BACK")
 
 
 def main():
     words = A.load_words()
-    cjk = set()
-    for label in A.UI_LABELS:
-        cjk.update(label)
-    for _, _, meaning in words:
-        cjk.update(meaning)
-    cjk.update("未启用")          # 同步页占位
+    cjk = A.ui_cjk_chars(words)
+    cjk.update("年月日一二三四五六")
     ipa_chars = set()
     for _, ipa, _ in words:
         ipa_chars.update(ipa)
 
-    f16 = A.build_cjk([c for c in cjk if ord(c) > 0x7F])
-    f12 = A.build_ipa([c for c in ipa_chars if ord(c) >= 0x20])
+    f24 = A.build_cjk24([c for c in cjk if ord(c) > 0x7F])
+    f14 = A.build_ipa14([c for c in ipa_chars if ord(c) >= 0x20])
 
     pages = []
+    menu_items = ["单词", "复习日历", "同步", "设置"]
 
     p = Panel()
-    page_card(p, 0, len(words), words[0][0], words[0][1], words[0][2],
-              "就绪", "按录音键跟读", f16, f12)
+    page_menu(p, menu_items, 0, f24)
+    pages.append(p.img)
+
+    # 菜单选中第 2 项（演示高亮）
+    p = Panel()
+    page_menu(p, menu_items, 1, f24)
     pages.append(p.img)
 
     p = Panel()
-    w = words[16]
-    page_card(p, 16, len(words), w[0], w[1], w[2], "录音中", "正在录音", f16, f12)
+    page_card(p, 0, len(words), words[0][0], words[0][1], words[0][2], f24, f14)
     pages.append(p.img)
 
     p = Panel()
-    w = words[10]
-    page_card(p, 10, len(words), w[0], w[1], w[2], "已保存", "评分待接入", f16, f12)
+    w = words[32]      # iron 铁 / 20 warm 温暖的
+    page_card(p, 32, len(words), w[0], w[1], w[2], f24, f14)
+    pages.append(p.img)
+
+    today = datetime.date(2026, 11, 5)
+    p = Panel()
+    page_calendar(p, today, {1, 2, 3, 4, 5}, f24)
     pages.append(p.img)
 
     p = Panel()
-    page_home(p, f16, {"total": len(words), "today": 0, "streak": 0})
+    page_sync(p, "EPD-Word-01", "192.168.4.1", f24)
     pages.append(p.img)
 
     p = Panel()
-    page_sync(p, f16, "EPD-Word-01", "192.168.4.1")
+    page_settings(p, f24, 0)
     pages.append(p.img)
 
     scale = 3

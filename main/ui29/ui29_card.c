@@ -1,22 +1,26 @@
 /*
- * ui29_card.c — 2.9" 单词卡界面（横向 296x128）
+ * ui29_card.c — 2.9" 单词卡界面（横向 296x128），带二级菜单
  *
  * 物理屏是 128x296 竖屏：SSD1680 的 gate 固定在 296 行，所以横向显示
- * 只能把内容旋转 90° 写进同一块帧缓冲。这里所有绘制都走 put_px()，
- * 由它做「横向逻辑坐标 -> 物理坐标」的映射：
+ * 只能把内容旋转 90° 写进同一块帧缓冲。所有绘制都走 put_px()：
  *
- *     phys_x = 127 - ly      (0..127，正好是 128 列)
- *     phys_y = lx            (0..295，正好是 296 行)
+ *     phys_x = 127 - ly      (0..127，128 列)
+ *     phys_y = lx            (0..295，296 行)
  *
- * 如果实机上方向倒了/镜像了，用 `bench ui flip <0..3>` 现场翻，不用重烧：
- *     bit0 = 上下翻（翻转 ly），bit1 = 左右翻（翻转 lx）
+ * 页面结构（二级）：
+ *     主菜单 ─┬─ 单词      PREV/NEXT 翻词，REC 录音，PLAY 播放，SYNC 返回
+ *             ├─ 复习日历  PREV/NEXT 换月，黑底白字=已复习，方框=今天
+ *             ├─ 同步      Wi-Fi 状态（未启用）
+ *             └─ 设置      无线网络 / 蓝牙 开关（PLAY 切换）
  *
- * 布局常量与 tools/ui29_preview.py 一一对应：改一边必须改另一边。
+ * 方向现场校正：`bench ui flip <0..3>`。
+ * 布局常量与 tools/ui29_preview.py 一一对应，改一边必须改另一边。
  *
  * SPDX-License-Identifier: MIT
  */
 #include <stdio.h>
 #include <string.h>
+#include <time.h>
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -34,60 +38,76 @@
 #include "epd_ssd1680.h"
 
 #include "ui29_card.h"
-#include "ui29_font12.h"
-#include "ui29_font16.h"
+#include "ui29_font14.h"
+#include "ui29_font24.h"
 #include "ui29_words.h"
 
 static const char *TAG = "ui29";
 
 /* ---------------------------------------------------------------- 逻辑尺寸 */
-#define LW          296          /* 横向宽（对应物理 296 行） */
-#define LH          128          /* 横向高（对应物理 128 列） */
+#define LW          296
+#define LH          128
 
 /* ---------------------------------------------------------------- 布局常量 */
-#define MARGIN      4
-#define INNER       (LW - 2 * MARGIN)     /* 288 */
+#define MARGIN      3
+#define INNER       (LW - 2 * MARGIN)     /* 290 */
 #define Y_SBAR      3
 #define Y_DIV1      14
+
+#define MENU_X      12
+#define MENU_Y      18
+#define MENU_ROW_H  26
+
 #define COL_L       8
-#define COL_R       176
-#define Y_WORD      17
+#define Y_WORD      18
 #define WORD_SCALE  4
-#define Y_IPA       53
-#define Y_MEAN      17
-#define MEAN_LINE_H 20
-#define Y_BIG       41
-#define Y_SMALL     65
-#define Y_BAR       83
+#define Y_ROW2      56                    /* 音标 + 释义同一行 */
+#define Y_BAR       86
 #define BAR_H       8
-#define Y_HINT      104
+#define Y_HINT      106
+
+#define CAL_CELL_W  41
+#define CAL_HDR_Y   15
+#define CAL_Y0      41
+#define CAL_ROW_H   14
+
+#define CJK         24
+#define IPA_ADV     12
 
 #define TMO_MS          8000
 #define FULL_EVERY_N    20
 
 /* ---------------------------------------------------------------- 页面状态 */
 typedef enum {
-    PAGE_CARD = 0,
-    PAGE_HOME,
+    PAGE_MENU = 0,
+    PAGE_CARD,
+    PAGE_CAL,
     PAGE_SYNC,
+    PAGE_SETTINGS,
+    PAGE_COUNT,
 } page_t;
 
 typedef enum {
     CARD_READY = 0,
     CARD_RECORDING,
     CARD_SAVED,
-    CARD_PLAYING,
     CARD_ERROR,
 } card_state_t;
 
 static page_t s_page;
-static card_state_t s_state;
-static int s_idx;
+static card_state_t s_card_state;
+static int s_menu_sel;
+static int s_word;
+static int s_set_sel;
+static int s_cal_year;
+static int s_cal_month;
 static int s_refresh_n;
-static int s_flip;                    /* bit0: 上下翻, bit1: 左右翻 */
+static int s_flip;
+static bool s_wifi_on;
+static bool s_bt_on;
+static uint32_t s_reviewed;          /* bit (day-1)：已复习的日期 */
 static volatile bool s_redraw_req;
 static char s_msg[48];
-static char s_big[24];
 
 static uint8_t s_fb[EPD1680_FRAME_BYTES];
 
@@ -102,9 +122,7 @@ static void put_px(int x, int y, int color)
     if (s_flip & 2) lx = LW - 1 - lx;
     if (s_flip & 1) ly = LH - 1 - ly;
 
-    int px = (EPD1680_WIDTH - 1) - ly;
-    int py = lx;
-    epd1680_fb_pixel(s_fb, px, py, (uint8_t)color);
+    epd1680_fb_pixel(s_fb, (EPD1680_WIDTH - 1) - ly, lx, (uint8_t)color);
 }
 
 static void hline(int x, int y, int w, int color)
@@ -138,7 +156,8 @@ static int ascii_w(const char *s, int scale)
     return (int)strlen(s) * 5 * sc;
 }
 
-static void draw_ascii(int x, int y, const char *s, int scale)
+/* color: 1 = 黑字（默认），0 = 白字（用于反白） */
+static void draw_ascii(int x, int y, const char *s, int scale, int color)
 {
     int sc = scale > 0 ? scale : 1;
     int cx = x;
@@ -148,10 +167,12 @@ static void draw_ascii(int x, int y, const char *s, int scale)
             uint8_t bits = g[col];
             for (int row = 0; row < 8; row++) {
                 if (!(bits & (1u << row))) continue;
+                int px = cx + col * sc;
+                int py = y + row * sc;
                 if (sc == 1) {
-                    put_px(cx + col, y + row, 0);
+                    put_px(px, py, color);
                 } else {
-                    fill_rect(cx + col * sc, y + row * sc, sc, sc, 0);
+                    fill_rect(px, py, sc, sc, color);
                 }
             }
         }
@@ -159,7 +180,6 @@ static void draw_ascii(int x, int y, const char *s, int scale)
     }
 }
 
-/* UTF-8 解码：返回码位，*len 为消耗字节数 */
 static uint16_t utf8_next(const char *s, int *len)
 {
     const unsigned char *p = (const unsigned char *)s;
@@ -192,199 +212,269 @@ static int utf8_count(const char *s)
     return n;
 }
 
-static const ui29_glyph16_t *find16(uint16_t cp)
+static const ui29_glyph24_t *find24(uint16_t cp)
 {
-    for (int i = 0; i < UI29_FONT16_COUNT; i++) {
-        if (k_font16[i].cp == cp) return &k_font16[i];
+    for (int i = 0; i < UI29_FONT24_COUNT; i++) {
+        if (k_font24[i].cp == cp) return &k_font24[i];
     }
     return NULL;
 }
 
-static const ui29_glyph12_t *find12(uint16_t cp)
+static const ui29_glyph14_t *find14(uint16_t cp)
 {
-    for (int i = 0; i < UI29_FONT12_COUNT; i++) {
-        if (k_font12[i].cp == cp) return &k_font12[i];
+    for (int i = 0; i < UI29_FONT14_COUNT; i++) {
+        if (k_font14[i].cp == cp) return &k_font14[i];
     }
     return NULL;
 }
 
-/* 16x16 汉字，步进 16 px */
-static int text16(int x, int y, const char *s)
+/* 24x24 汉字，步进 24 px；color 0 = 白字 */
+static int text24(int x, int y, const char *s, int color)
 {
     int cx = x;
     const char *p = s;
     while (*p) {
         int n = 0;
         uint16_t cp = utf8_next(p, &n);
-        const ui29_glyph16_t *g = find16(cp);
+        const ui29_glyph24_t *g = find24(cp);
         if (g) {
-            for (int j = 0; j < 16; j++) {
-                uint16_t bits = (uint16_t)((g->bmp[j * 2] << 8) |
-                                           g->bmp[j * 2 + 1]);
-                for (int i = 0; i < 16; i++) {
-                    if (bits & (1u << (15 - i))) {
-                        put_px(cx + i, y + j, 0);
+            for (int j = 0; j < CJK; j++) {
+                uint32_t bits = g->bmp[j];
+                if (!bits) continue;
+                for (int i = 0; i < CJK; i++) {
+                    if (bits & (1u << (23 - i))) {
+                        put_px(cx + i, y + j, color);
                     }
                 }
             }
         }
-        cx += 16;
+        cx += CJK;
         p += n;
     }
     return cx - x;
 }
 
-/* 12x20 音标，步进 10 px */
-static int text12(int x, int y, const char *s)
+/* 14x24 音标，步进 12 px */
+static int text14(int x, int y, const char *s)
 {
     int cx = x;
     const char *p = s;
     while (*p) {
         int n = 0;
         uint16_t cp = utf8_next(p, &n);
-        const ui29_glyph12_t *g = find12(cp);
+        const ui29_glyph14_t *g = find14(cp);
         if (g) {
-            for (int j = 0; j < 20; j++) {
+            for (int j = 0; j < 24; j++) {
                 uint16_t bits = g->bmp[j];
-                for (int i = 0; i < 12; i++) {
-                    if (bits & (1u << (11 - i))) {
-                        put_px(cx + i, y + j, 0);
+                if (!bits) continue;
+                for (int i = 0; i < IPA_ADV + 2; i++) {
+                    if (bits & (1u << (13 - i))) {
+                        put_px(cx + i, y + j, 1);
                     }
                 }
             }
         }
-        cx += 10;
+        cx += IPA_ADV;
         p += n;
     }
     return cx - x;
 }
 
-/* ---------------------------------------------------------------- 绘制页面 */
+/* ---------------------------------------------------------------- 公共件 */
 
-static void draw_status_bar(const char *left, const char *right)
+static void status_bar(const char *left, const char *right)
 {
-    draw_ascii(MARGIN, Y_SBAR, left, 1);
-    draw_ascii(LW - MARGIN - ascii_w(right, 1), Y_SBAR, right, 1);
-    hline(MARGIN, Y_DIV1, INNER, 0);
+    draw_ascii(MARGIN, Y_SBAR, left, 1, 1);
+    draw_ascii(LW - MARGIN - ascii_w(right, 1), Y_SBAR, right, 1, 1);
+    hline(MARGIN, Y_DIV1, INNER, 1);
 }
 
-static void draw_progress(int idx, int total)
+static void footer_bar(const char *text)
 {
-    box_rect(MARGIN, Y_BAR, INNER, BAR_H, 0);
-    int fill_w = (INNER - 4) * (idx + 1) / total;
-    if (fill_w > 0) {
-        fill_rect(MARGIN + 2, Y_BAR + 2, fill_w, BAR_H - 4, 0);
-    }
+    box_rect(MARGIN, Y_HINT - 8, INNER, 24, 1);
+    draw_ascii(MARGIN + 6, Y_HINT, text, 1, 1);
 }
 
-static void draw_hint(void)
+/* ---------------------------------------------------------------- 页面：菜单 */
+
+static const char *const k_menu_items[] = {"单词", "复习日历", "同步", "设置"};
+#define MENU_ITEMS ((int)(sizeof(k_menu_items) / sizeof(k_menu_items[0])))
+
+static void draw_menu(void)
 {
-    draw_ascii(MARGIN, Y_HINT, "PREV NEXT PLAY    REC SYNC HOLD", 1);
-}
-
-/* 卡片页底部：键位条画成带框的条，把 128 px 高度用满 */
-static void draw_footer_bar(void)
-{
-    box_rect(MARGIN, Y_HINT - 6, INNER, 26, 0);
-    draw_ascii(MARGIN + 6, Y_HINT, "PREV NEXT PLAY    REC SYNC HOLD", 1);
-}
-
-/* 每行 7 个汉字；横向右栏只有 116 px，多出来的行不再画 */
-static void draw_meaning_1line(const char *meaning)
-{
-    char line[64];
-    const char *p = meaning;
-    int cnt = 0;
-    size_t used = 0;
-    line[0] = '\0';
-    while (*p && cnt < 7) {
-        int n = 0;
-        (void)utf8_next(p, &n);
-        if (used + (size_t)n + 1 >= sizeof(line)) break;
-        memcpy(line + used, p, (size_t)n);
-        used += (size_t)n;
-        line[used] = '\0';
-        p += n;
-        cnt++;
-    }
-    text16(COL_R, Y_MEAN, line);
-}
-
-static void draw_card_page(void)
-{
-    const ui29_word_t *w = &k_words29[s_idx];
-    char idxbuf[16];
-    snprintf(idxbuf, sizeof(idxbuf), "%02d/%02d", s_idx + 1, UI29_WORD_COUNT);
-
-    draw_status_bar("UNIT 01", idxbuf);
-
-    draw_ascii(COL_L, Y_WORD, w->word, WORD_SCALE);
-    text12(COL_L, Y_IPA, w->ipa);
-
-    draw_meaning_1line(w->meaning);
-    text16(COL_R, Y_BIG, s_big);
-    if (s_msg[0]) {
-        text16(COL_R, Y_SMALL, s_msg);
-    }
-
-    draw_progress(s_idx, UI29_WORD_COUNT);
-    draw_footer_bar();
-}
-
-static void draw_home_page(void)
-{
-    draw_status_bar("E-INK WORD", "HOME");
-    text16(MARGIN + 4, 28, "单词学习");
-    draw_ascii(MARGIN + 4, 56, "DAILY", 2);
-
-    box_rect(150, 24, 138, 72, 0);
-    const char *labels[3] = {"TOTAL", "TODAY", "STREAK"};
-    char values[3][8];
-    snprintf(values[0], sizeof(values[0]), "%d", UI29_WORD_COUNT);
-    snprintf(values[1], sizeof(values[1]), "0");
-    snprintf(values[2], sizeof(values[2]), "0");
-
-    int y = 32;
-    for (int i = 0; i < 3; i++) {
-        draw_ascii(160, y, labels[i], 1);
-        draw_ascii(278 - ascii_w(values[i], 1), y, values[i], 1);
-        for (int x = 158; x < 280; x += 5) {
-            hline(x, y + 12, 3, 0);
+    status_bar("E-INK WORD", "MENU");
+    for (int i = 0; i < MENU_ITEMS; i++) {
+        int y = MENU_Y + i * MENU_ROW_H;
+        if (i == s_menu_sel) {
+            fill_rect(MARGIN, y - 2, INNER, MENU_ROW_H - 2, 1);
+            text24(MENU_X, y, k_menu_items[i], 0);
+            draw_ascii(LW - MARGIN - 12, y + 8, ">", 1, 0);
+        } else {
+            text24(MENU_X, y, k_menu_items[i], 1);
+            draw_ascii(LW - MARGIN - 12, y + 8, ">", 1, 1);
         }
-        y += 20;
     }
-    draw_hint();
 }
 
-static void draw_sync_page(void)
+/* ---------------------------------------------------------------- 页面：卡片 */
+
+static void draw_card(void)
 {
-    draw_status_bar("SYNC", "WIFI");
-    text16(MARGIN + 4, 26, "无线同步");
-    text16(220, 28, "未启用");
+    const ui29_word_t *w = &k_words29[s_word];
+    char idx[16];
+    snprintf(idx, sizeof(idx), "%02d/%02d", s_word + 1, UI29_WORD_COUNT);
 
-    box_rect(MARGIN + 4, 52, 200, 44, 0);
-    draw_ascii(MARGIN + 12, 58, "SSID", 1);
-    draw_ascii(MARGIN + 12, 70, "EPD-Word-01", 1);
-    draw_ascii(MARGIN + 110, 58, "URL", 1);
-    draw_ascii(MARGIN + 110, 70, "192.168.4.1", 1);
+    status_bar("UNIT 01", idx);
+    draw_ascii(COL_L, Y_WORD, w->word, WORD_SCALE, 1);
 
-    draw_ascii(MARGIN, Y_HINT, "SYNC = STOP AP", 1);
+    /* 音标 + 中文释义同一行 */
+    text14(COL_L, Y_ROW2, w->ipa);
+    int mw = utf8_count(w->meaning) * CJK;
+    int mx = COL_L + utf8_count(w->ipa) * IPA_ADV + 14;
+    if (mx + mw > LW - MARGIN) mx = LW - MARGIN - mw;
+    if (mx < COL_L) mx = COL_L;
+    text24(mx, Y_ROW2, w->meaning, 1);
+
+    /* 进度条 */
+    box_rect(MARGIN, Y_BAR, INNER, BAR_H, 1);
+    int fill = (INNER - 4) * (s_word + 1) / UI29_WORD_COUNT;
+    if (fill > 0) fill_rect(MARGIN + 2, Y_BAR + 2, fill, BAR_H - 4, 1);
+
+    /* 状态：右下方小字，避免和音标/释义抢位置 */
+    if (s_card_state != CARD_READY) {
+        draw_ascii(MARGIN + 4, Y_BAR - 12, s_msg, 1, 1);
+    }
+
+    footer_bar("PREV NEXT PLAY   REC SYNC HOLD");
+}
+
+/* ---------------------------------------------------------------- 页面：日历 */
+
+static bool is_leap(int y)
+{
+    return (y % 4 == 0 && y % 100 != 0) || (y % 400 == 0);
+}
+
+static int days_in_month(int y, int m)
+{
+    static const int d[12] = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+    if (m == 2 && is_leap(y)) return 29;
+    return d[m - 1];
+}
+
+/* 0=周日 .. 6=周六 */
+static int weekday_of(int y, int m, int d)
+{
+    static const int t[] = {0, 3, 2, 5, 0, 3, 5, 1, 4, 6, 2, 4};
+    if (m < 3) y -= 1;
+    return (y + y / 4 - y / 100 + y / 400 + t[m - 1] + d) % 7;
+}
+
+static void draw_calendar(void)
+{
+    char head[24];
+    snprintf(head, sizeof(head), "%04d-%02d  SYNC=BACK", s_cal_year, s_cal_month);
+    status_bar("CALENDAR", head);
+
+    static const char *const wd = "日一二三四五六";
+    for (int i = 0; i < 7; i++) {
+        char ch[2] = {0, 0};
+        /* wd 是 UTF-8 字符串，每个汉字 3 字节 */
+        memcpy(ch, wd + i * 3, 3);
+        text24(MARGIN + i * CAL_CELL_W + (CAL_CELL_W - CJK) / 2, CAL_HDR_Y, ch, 1);
+    }
+
+    int first = weekday_of(s_cal_year, s_cal_month, 1);
+    int ndays = days_in_month(s_cal_year, s_cal_month);
+    bool is_current = false;
+    time_t now = time(NULL);
+    struct tm tmv;
+    localtime_r(&now, &tmv);
+    if (tmv.tm_year + 1900 == s_cal_year && tmv.tm_mon + 1 == s_cal_month) {
+        is_current = true;
+    }
+
+    for (int d = 1; d <= ndays; d++) {
+        int slot = first + d - 1;
+        int r = slot / 7;
+        int c = slot % 7;
+        if (r >= 6) break;
+
+        int cx = MARGIN + c * CAL_CELL_W;
+        int cy = CAL_Y0 + r * CAL_ROW_H;
+        char txt[16];
+        snprintf(txt, sizeof(txt), "%d", d);
+        int tw = ascii_w(txt, 1);
+        int x = cx + (CAL_CELL_W - tw) / 2;
+
+        bool done = (s_reviewed >> (d - 1)) & 1;
+        if (done) {
+            fill_rect(cx + 8, cy, CAL_CELL_W - 16, 11, 1);
+            draw_ascii(x, cy + 2, txt, 1, 0);
+        } else {
+            draw_ascii(x, cy + 2, txt, 1, 1);
+        }
+        if (is_current && d == tmv.tm_mday) {
+            box_rect(cx + 6, cy - 1, CAL_CELL_W - 12, 13, 1);
+        }
+    }
+}
+
+/* ---------------------------------------------------------------- 页面：同步 */
+
+static void draw_sync(void)
+{
+    status_bar("SYNC", s_wifi_on ? "WIFI ON" : "WIFI OFF");
+    text24(MARGIN, 18, "无线同步", 1);
+    draw_ascii(MARGIN, 50, "SSID", 1, 1);
+    draw_ascii(MARGIN + 44, 50, "EPD-Word-01", 1, 1);
+    draw_ascii(MARGIN, 64, "URL", 1, 1);
+    draw_ascii(MARGIN + 44, 64, "192.168.4.1", 1, 1);
+    text24(MARGIN, 80, s_wifi_on ? "已开启" : "未启用", 1);
+    draw_ascii(MARGIN, Y_HINT + 4, "SYNC = BACK", 1, 1);
+}
+
+/* ---------------------------------------------------------------- 页面：设置 */
+
+static void draw_settings(void)
+{
+    status_bar("SETTINGS", "MENU");
+    const char *labels[2] = {"无线网络", "蓝牙"};
+    const char *states[2] = {s_wifi_on ? "开启" : "关闭", s_bt_on ? "开启" : "关闭"};
+
+    for (int i = 0; i < 2; i++) {
+        int y = 18 + i * 38;
+        if (i == s_set_sel) {
+            box_rect(MARGIN, y - 2, INNER, 30, 1);
+        }
+        text24(MARGIN + 10, y, labels[i], 1);
+        int sw = utf8_count(states[i]) * CJK;
+        text24(LW - MARGIN - 10 - sw, y, states[i], 1);
+    }
+    draw_ascii(MARGIN, Y_HINT + 4, "PLAY = TOGGLE   SYNC = BACK", 1, 1);
 }
 
 /* ---------------------------------------------------------------- 刷新 */
+
 static void render(void)
 {
     epd1680_fb_clear(s_fb, 1);
     switch (s_page) {
-    case PAGE_HOME:
-        draw_home_page();
+    case PAGE_CARD:
+        draw_card();
+        break;
+    case PAGE_CAL:
+        draw_calendar();
         break;
     case PAGE_SYNC:
-        draw_sync_page();
+        draw_sync();
         break;
-    case PAGE_CARD:
+    case PAGE_SETTINGS:
+        draw_settings();
+        break;
+    case PAGE_MENU:
     default:
-        draw_card_page();
+        draw_menu();
         break;
     }
 }
@@ -393,27 +483,35 @@ static void refresh(bool force_full)
 {
     int64_t t0 = esp_timer_get_time();
     bool ok;
+    bool full = force_full || s_refresh_n == 0 ||
+                (s_refresh_n % FULL_EVERY_N) == 0;
 
-    if (force_full || s_refresh_n == 0 || (s_refresh_n % FULL_EVERY_N) == 0) {
+    if (full) {
         ok = epd1680_full(s_fb, TMO_MS);
-        ESP_LOGI(TAG, "full refresh %s %lld ms", ok ? "ok" : "FAIL",
-                 (long long)((esp_timer_get_time() - t0) / 1000));
     } else {
         ok = epd1680_fast(s_fb, TMO_MS);
-        ESP_LOGI(TAG, "partial refresh %s %lld ms", ok ? "ok" : "FAIL",
-                 (long long)((esp_timer_get_time() - t0) / 1000));
     }
+    ESP_LOGI(TAG, "%s refresh %s %lld ms", full ? "full" : "partial",
+             ok ? "ok" : "FAIL", (long long)((esp_timer_get_time() - t0) / 1000));
     s_refresh_n++;
 }
 
-static void set_status(card_state_t st, const char *big, const char *msg)
+static void go(page_t p)
 {
-    s_state = st;
-    snprintf(s_big, sizeof(s_big), "%s", big ? big : "");
-    snprintf(s_msg, sizeof(s_msg), "%s", msg ? msg : "");
+    s_page = p;
+    render();
+    refresh(false);
 }
 
 /* ---------------------------------------------------------------- 录音 */
+
+static void mark_reviewed_today(void)
+{
+    time_t now = time(NULL);
+    struct tm tmv;
+    localtime_r(&now, &tmv);
+    s_reviewed |= (1u << tmv.tm_mday);
+}
 
 static void finish_recording(void)
 {
@@ -421,9 +519,14 @@ static void finish_recording(void)
     size_t frames = 0;
     audio_capture_stats_t stats;
     esp_err_t err = audio_in_stop(&pcm, &frames, &stats);
+
+    s_card_state = CARD_READY;
+    snprintf(s_msg, sizeof(s_msg), "READY");
+
     if (err != ESP_OK || frames == 0) {
         ESP_LOGE(TAG, "record stop failed: %s", esp_err_to_name(err));
-        set_status(CARD_ERROR, "错误", "请重试");
+        s_card_state = CARD_ERROR;
+        snprintf(s_msg, sizeof(s_msg), "SAVE ERR");
         render();
         refresh(false);
         return;
@@ -433,10 +536,11 @@ static void finish_recording(void)
     err = audio_vad_analyze(pcm, frames, &vad);
     if (err != ESP_OK || !vad.has_speech) {
         ESP_LOGW(TAG, "no speech snr=%.1f", vad.snr_db);
-        set_status(CARD_ERROR, "错误", "无语音");
+        s_card_state = CARD_ERROR;
+        snprintf(s_msg, sizeof(s_msg), "NO SPEECH");
+        audio_in_free(pcm);
         render();
         refresh(false);
-        audio_in_free(pcm);
         return;
     }
 
@@ -451,17 +555,21 @@ static void finish_recording(void)
         audio_wav_duration_str((uint32_t)n, dur, sizeof(dur));
         ESP_LOGI(TAG, "saved %s (%u frames, snr=%.1f dB)", path,
                  (unsigned)n, vad.snr_db);
-        set_status(CARD_SAVED, "已保存", "评分待接入");
+        s_card_state = CARD_SAVED;
+        snprintf(s_msg, sizeof(s_msg), "SAVED %s", dur);
+        mark_reviewed_today();
     } else {
         ESP_LOGE(TAG, "save failed: %s", esp_err_to_name(err));
-        set_status(CARD_ERROR, "错误", "保存失败");
+        s_card_state = CARD_ERROR;
+        snprintf(s_msg, sizeof(s_msg), "SAVE ERR");
     }
     audio_in_free(pcm);
 
     render();
     refresh(false);
     vTaskDelay(pdMS_TO_TICKS(1200));
-    set_status(CARD_READY, "就绪", "按录音键跟读");
+    s_card_state = CARD_READY;
+    snprintf(s_msg, sizeof(s_msg), "READY");
     render();
     refresh(false);
 }
@@ -471,9 +579,11 @@ static void start_recording(void)
     esp_err_t err = audio_in_start(CONFIG_APP_AUDIO_RECORD_MS);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "audio_in_start: %s", esp_err_to_name(err));
-        set_status(CARD_ERROR, "错误", "麦克风不可用");
+        s_card_state = CARD_ERROR;
+        snprintf(s_msg, sizeof(s_msg), "MIC ERR");
     } else {
-        set_status(CARD_RECORDING, "录音中", "正在录音");
+        s_card_state = CARD_RECORDING;
+        snprintf(s_msg, sizeof(s_msg), "REC 2.0s");
     }
     render();
     refresh(false);
@@ -483,17 +593,26 @@ static void play_last(void)
 {
     char path[160];
     if (audio_wav_latest(path, sizeof(path)) != ESP_OK) {
-        set_status(CARD_ERROR, "错误", "没有录音");
+        s_card_state = CARD_ERROR;
+        snprintf(s_msg, sizeof(s_msg), "NO REC");
     } else {
-        set_status(CARD_PLAYING, "播放中", "听发音");
+        snprintf(s_msg, sizeof(s_msg), "PLAY");
         (void)audio_out_play_wav(path);
-        set_status(CARD_READY, "就绪", "按录音键跟读");
+        s_card_state = CARD_READY;
     }
     render();
     refresh(false);
 }
 
 /* ---------------------------------------------------------------- 对外调试 */
+
+void ui29_goto(int page)
+{
+    if (page < 0 || page >= PAGE_COUNT) return;
+    s_page = (page_t)page;
+    s_redraw_req = true;
+    ESP_LOGI(TAG, "goto page %d", page);
+}
 
 void ui29_set_flip(int flip)
 {
@@ -506,27 +625,34 @@ void ui29_set_flip(int flip)
 
 void ui29_run(void)
 {
-    ESP_LOGI(TAG, "word card start: %d words, landscape %dx%d",
-             UI29_WORD_COUNT, LW, LH);
+    time_t now = time(NULL);
+    struct tm tmv;
+    localtime_r(&now, &tmv);
+    s_cal_year = tmv.tm_year + 1900;
+    s_cal_month = tmv.tm_mon + 1;
 
-    s_page = PAGE_CARD;
-    s_idx = 0;
-    s_refresh_n = 0;
-    set_status(CARD_READY, "就绪", "按录音键跟读");
+    ESP_LOGI(TAG, "menu start, %d words, %04d-%02d", UI29_WORD_COUNT,
+             s_cal_year, s_cal_month);
+
+    s_page = PAGE_MENU;
+    s_menu_sel = 0;
+    s_word = 0;
+    s_card_state = CARD_READY;
+    snprintf(s_msg, sizeof(s_msg), "READY");
 
     render();
-    refresh(true);            /* 首次全刷，建立局刷基准 */
+    refresh(true);
 
     uint32_t last_poll = 0;
     bool recording = false;
 
     for (;;) {
-        uint32_t now = (uint32_t)(esp_timer_get_time() / 1000);
-        if (now - last_poll < 10) {
+        uint32_t ms = (uint32_t)(esp_timer_get_time() / 1000);
+        if (ms - last_poll < 10) {
             vTaskDelay(pdMS_TO_TICKS(5));
             continue;
         }
-        last_poll = now;
+        last_poll = ms;
 
         if (s_redraw_req) {
             s_redraw_req = false;
@@ -541,59 +667,101 @@ void ui29_run(void)
             continue;
         }
 
-        button_event_t ev = buttons_poll(now);
-        if (ev == BUTTON_EVENT_NONE) {
-            continue;
-        }
+        button_event_t ev = buttons_poll(ms);
+        if (ev == BUTTON_EVENT_NONE) continue;
         ESP_LOGI(TAG, "event %s", buttons_event_name(ev));
 
-        if (recording) {
-            continue;         /* 录音期间忽略按键 */
-        }
+        if (recording) continue;
 
-        switch (ev) {
-        case BUTTON_EVENT_NEXT_SHORT:
-            if (s_page == PAGE_CARD) {
-                s_idx = (s_idx + 1) % UI29_WORD_COUNT;
-                set_status(CARD_READY, "就绪", "按录音键跟读");
+        switch (s_page) {
+        case PAGE_MENU:
+            if (ev == BUTTON_EVENT_PREV_SHORT) {
+                s_menu_sel = (s_menu_sel + MENU_ITEMS - 1) % MENU_ITEMS;
                 render();
                 refresh(false);
-            }
-            break;
-        case BUTTON_EVENT_PREV_SHORT:
-            if (s_page == PAGE_CARD) {
-                s_idx = (s_idx + UI29_WORD_COUNT - 1) % UI29_WORD_COUNT;
-                set_status(CARD_READY, "就绪", "按录音键跟读");
+            } else if (ev == BUTTON_EVENT_NEXT_SHORT) {
+                s_menu_sel = (s_menu_sel + 1) % MENU_ITEMS;
                 render();
                 refresh(false);
+            } else if (ev == BUTTON_EVENT_PLAY_SHORT) {
+                if (s_menu_sel == 0) go(PAGE_CARD);
+                else if (s_menu_sel == 1) go(PAGE_CAL);
+                else if (s_menu_sel == 2) go(PAGE_SYNC);
+                else go(PAGE_SETTINGS);
+            } else if (ev == BUTTON_EVENT_SYNC_SHORT) {
+                go(PAGE_SYNC);
             }
             break;
-        case BUTTON_EVENT_NEXT_LONG:
-            s_page = (s_page == PAGE_HOME) ? PAGE_CARD : PAGE_HOME;
-            render();
-            refresh(false);
-            break;
-        case BUTTON_EVENT_RECORD_SHORT:
-            if (s_page == PAGE_CARD) {
+
+        case PAGE_CARD:
+            if (ev == BUTTON_EVENT_PREV_SHORT) {
+                s_word = (s_word + UI29_WORD_COUNT - 1) % UI29_WORD_COUNT;
+                render();
+                refresh(false);
+            } else if (ev == BUTTON_EVENT_NEXT_SHORT) {
+                s_word = (s_word + 1) % UI29_WORD_COUNT;
+                render();
+                refresh(false);
+            } else if (ev == BUTTON_EVENT_RECORD_SHORT) {
                 start_recording();
                 recording = true;
+            } else if (ev == BUTTON_EVENT_PLAY_SHORT) {
+                play_last();
+            } else if (ev == BUTTON_EVENT_SYNC_SHORT ||
+                       ev == BUTTON_EVENT_SYNC_LONG) {
+                go(PAGE_MENU);
             }
             break;
-        case BUTTON_EVENT_PLAY_SHORT:
-            if (s_page == PAGE_HOME) {
-                s_page = PAGE_CARD;
+
+        case PAGE_CAL:
+            if (ev == BUTTON_EVENT_PREV_SHORT) {
+                if (--s_cal_month < 1) {
+                    s_cal_month = 12;
+                    s_cal_year--;
+                }
                 render();
                 refresh(false);
-            } else {
-                play_last();
+            } else if (ev == BUTTON_EVENT_NEXT_SHORT) {
+                if (++s_cal_month > 12) {
+                    s_cal_month = 1;
+                    s_cal_year++;
+                }
+                render();
+                refresh(false);
+            } else if (ev == BUTTON_EVENT_SYNC_SHORT ||
+                       ev == BUTTON_EVENT_SYNC_LONG) {
+                go(PAGE_MENU);
             }
             break;
-        case BUTTON_EVENT_SYNC_SHORT:
-            s_page = (s_page == PAGE_SYNC) ? PAGE_CARD : PAGE_SYNC;
-            render();
-            refresh(false);
+
+        case PAGE_SYNC:
+            if (ev == BUTTON_EVENT_SYNC_SHORT || ev == BUTTON_EVENT_SYNC_LONG ||
+                ev == BUTTON_EVENT_PLAY_SHORT) {
+                go(PAGE_MENU);
+            }
             break;
+
+        case PAGE_SETTINGS:
+            if (ev == BUTTON_EVENT_PREV_SHORT || ev == BUTTON_EVENT_NEXT_SHORT) {
+                s_set_sel ^= 1;
+                render();
+                refresh(false);
+            } else if (ev == BUTTON_EVENT_PLAY_SHORT) {
+                if (s_set_sel == 0) {
+                    s_wifi_on = !s_wifi_on;
+                } else {
+                    s_bt_on = !s_bt_on;
+                }
+                render();
+                refresh(false);
+            } else if (ev == BUTTON_EVENT_SYNC_SHORT ||
+                       ev == BUTTON_EVENT_SYNC_LONG) {
+                go(PAGE_MENU);
+            }
+            break;
+
         default:
+            go(PAGE_MENU);
             break;
         }
     }
