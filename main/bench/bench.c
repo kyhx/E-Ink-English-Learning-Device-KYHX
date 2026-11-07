@@ -2,7 +2,7 @@
  * bench.c — serial console commands for board bring-up.
  *
  * 运行在 esp_console 自己的 REPL 任务里；M0 还没有显示互斥锁，所以
- * display 命令不要和 app 同时刷新。M2 新增 audio 子命令，覆盖：
+ * 2.9" 单屏版：显示相关命令只剩 epd1680/ui，audio 子命令覆盖：
  *   info/rec/play/tone/gain/gen/dump/list/analyze/soak/selftest
  *
  * SPDX-License-Identifier: MIT
@@ -40,14 +40,10 @@
 #include "audio_wav.h"
 #include "board_pins.h"
 #include "buttons.h"
-#include "collect.h"
-#include "epd_lut_partial.h"
-#include "epd_ssd1619a.h"
 #include "epd_ssd1680.h"
 #include "panel1680_test.h"
 #include "ui29_card.h"
 #include "storage.h"
-#include "word_view.h"
 
 static const char *TAG = "bench";
 
@@ -72,21 +68,6 @@ static const char *reset_reason_name(esp_reset_reason_t r)
     case ESP_RST_SDIO:     return "SDIO";
     default:               return "UNKNOWN";
     }
-}
-
-static void draw_centered(uint8_t *fb, int y, const char *text, int scale)
-{
-    int w = epd_fb_text_width_scaled(text, scale);
-    epd_fb_text_scaled(fb, (EPD_WIDTH - w) / 2, y, text, 0, scale);
-}
-
-static void draw_bench_base(uint8_t *fb)
-{
-    epd_fb_clear(fb, 1);
-    epd_fb_rect(fb, 0, 0, EPD_WIDTH, EPD_HEIGHT, 0);
-    draw_centered(fb, 30, "BENCH", 3);
-    draw_centered(fb, 185, "M0 / EPD + FS + KEYS", 2);
-    draw_centered(fb, 265, "bench> help", 1);
 }
 
 static int cmd_bench_info(void)
@@ -119,88 +100,6 @@ static int cmd_bench_fs(void)
     return (a == ESP_OK && b == ESP_OK) ? 0 : 1;
 }
 
-static int cmd_bench_display_band(int y0, int h, int n)
-{
-    if (y0 < 0 || h <= 0 || y0 + h > EPD_HEIGHT || n <= 0 || n > 100) {
-        printf("usage: bench display band <y0> <h> <n>  (0<=y0, y0+h<=300, 1<=n<=100)\n");
-        return 1;
-    }
-
-    static uint8_t fb[EPD_FRAME_BYTES];
-    draw_bench_base(fb);
-
-    int64_t min_us = INT64_MAX;
-    int64_t max_us = 0;
-    int64_t sum_us = 0;
-    bool all_ok = true;
-
-    printf("\n== band refresh y=%d h=%d n=%d ==\n", y0, h, n);
-    for (int i = 0; i < n; i++) {
-        char line[24];
-        snprintf(line, sizeof(line), "BAND %d", i);
-        draw_bench_base(fb);  /* clear previous text inside the band */
-        draw_centered(fb, y0 + (h - 8 * 4) / 2, line, 4);
-
-        int64_t t0 = esp_timer_get_time();
-        bool ok = epd_band_update(fb, y0, y0 + h - 1, 5000);
-        int64_t dt = esp_timer_get_time() - t0;
-        if (dt < min_us) min_us = dt;
-        if (dt > max_us) max_us = dt;
-        sum_us += dt;
-        all_ok = all_ok && ok;
-        printf("  #%02d %s %lld ms\n", i, ok ? "ok" : "FAIL", (long long)(dt / 1000));
-    }
-
-    printf("band: min=%lld ms avg=%lld ms max=%lld ms\n",
-           (long long)(min_us / 1000), (long long)(sum_us / n / 1000),
-           (long long)(max_us / 1000));
-    return all_ok ? 0 : 1;
-}
-
-static int cmd_bench_display_full(void)
-{
-    static uint8_t fb[EPD_FRAME_BYTES];
-    draw_bench_base(fb);
-    int64_t t0 = esp_timer_get_time();
-    bool ok = epd_partial_show_full(fb, 5000);
-    int64_t dt = esp_timer_get_time() - t0;
-    printf("\nfull refresh: %s %lld ms\n", ok ? "ok" : "FAIL", (long long)(dt / 1000));
-    return ok ? 0 : 1;
-}
-
-static int cmd_bench_display_clean(void)
-{
-    static uint8_t fb[EPD_FRAME_BYTES];
-    printf("\n== clean cycle ==\n");
-
-    bool all_ok = true;
-    int64_t t0 = esp_timer_get_time();
-    epd_fb_clear(fb, 1);
-    bool ok = epd_partial_show_full(fb, 5000);
-    all_ok = all_ok && ok;
-    printf("  white: %s %lld ms\n", ok ? "ok" : "FAIL",
-           (long long)((esp_timer_get_time() - t0) / 1000));
-
-    t0 = esp_timer_get_time();
-    epd_fb_clear(fb, 0);
-    ok = epd_partial_show_full(fb, 5000);
-    all_ok = all_ok && ok;
-    printf("  black: %s %lld ms\n", ok ? "ok" : "FAIL",
-           (long long)((esp_timer_get_time() - t0) / 1000));
-
-    t0 = esp_timer_get_time();
-    draw_bench_base(fb);
-    ok = epd_partial_show_full(fb, 5000);
-    all_ok = all_ok && ok;
-    printf("  base:  %s %lld ms\n", ok ? "ok" : "FAIL",
-           (long long)((esp_timer_get_time() - t0) / 1000));
-
-    bool lut = epd_partial_reload_lut(epd_lut_partial_70);
-    all_ok = all_ok && lut;
-    printf("  LUT reload: %s\n", lut ? "ok" : "FAIL");
-    return all_ok ? 0 : 1;
-}
-
 static int cmd_bench_keys(int seconds)
 {
     if (seconds < 1 || seconds > 30) {
@@ -229,8 +128,6 @@ static int cmd_bench_selftest(void)
     int rc = 0;
     rc |= cmd_bench_info();
     rc |= cmd_bench_fs();
-    rc |= cmd_bench_display_band(95, 70, 3);
-    rc |= cmd_bench_display_full();
     printf("===== selftest: %s =====\n", rc == 0 ? "PASS" : "FAIL");
     return rc;
 }
@@ -638,65 +535,6 @@ static int cmd_bench_audio_selftest(void)
     return rc;
 }
 
-static int cmd_bench_collect(int argc, char **argv)
-{
-    if (argc < 3) {
-        printf("usage: bench collect info|set <S01> <word> <0|1>|last|rec|list|csv|delete <path>\n");
-        return 1;
-    }
-    if (!strcmp(argv[2], "info")) {
-        collect_info();
-        return 0;
-    }
-    if (!strcmp(argv[2], "last")) {
-        printf("last_path=%s\nlast_utt=%s\n",
-               collect_last_path()[0] ? collect_last_path() : "none",
-               collect_last_utt()[0] ? collect_last_utt() : "none");
-        return 0;
-    }
-    if (!strcmp(argv[2], "rec")) {
-        collect_request_record();
-        printf("record requested (speak now)\n");
-        return 0;
-    }
-    if (!strcmp(argv[2], "list") || !strcmp(argv[2], "csv")) {
-        if (!strcmp(argv[2], "list")) {
-            collect_list();
-        } else {
-            collect_csv();
-        }
-        return 0;
-    }
-    if (!strcmp(argv[2], "delete")) {
-        if (argc < 4) {
-            printf("usage: bench collect delete <path>\n");
-            return 1;
-        }
-        return collect_delete(argv[3]) ? 0 : 1;
-    }
-    if (!strcmp(argv[2], "set")) {
-        if (argc < 6) {
-            printf("usage: bench collect set <S01> <word> <0|1>\n");
-            return 1;
-        }
-        int speaker = 0;
-        if (sscanf(argv[3], "S%d", &speaker) != 1) {
-            speaker = atoi(argv[3]);
-        }
-        int word = atoi(argv[4]);
-        int label = atoi(argv[5]);
-        if (!collect_set_state(speaker, word, label)) {
-            printf("set failed: speaker 1..8, word 0..%d, label 0/1, not recording\n",
-                   word_view_count() - 1);
-            return 1;
-        }
-        printf("state set: S%02d W%02d L%d\n", speaker, word, label);
-        return 0;
-    }
-    printf("unknown collect subcommand: %s\n", argv[2]);
-    return 1;
-}
-
 static int cmd_bench_audio(int argc, char **argv)
 {
     if (argc < 3) {
@@ -750,9 +588,6 @@ static void print_bench_usage(void)
     printf("usage:\n");
     printf("  bench info\n");
     printf("  bench fs\n");
-    printf("  bench display band <y0> <h> <n>\n");
-    printf("  bench display full\n");
-    printf("  bench display clean\n");
     printf("  bench keys [seconds]\n");
     printf("  bench audio info|rec [ms] [play]|play [file]|tone [ms]\n");
     printf("               list|analyze [file]|soak [n]|selftest\n");
@@ -957,37 +792,6 @@ static int cmd_bench(int argc, char **argv)
     if (!strcmp(argv[1], "audio")) {
         return cmd_bench_audio(argc, argv);
     }
-    if (!strcmp(argv[1], "collect")) {
-        return cmd_bench_collect(argc, argv);
-    }
-    if (!strcmp(argv[1], "display")) {
-#if CONFIG_APP_MODE_EPD1680
-        /* 2.9" SSD1680 模式下 4.2" 驱动未初始化，禁止走老的显示命令 */
-        printf("4.2in display commands are disabled in APP_MODE_EPD1680; "
-               "use `bench epd1680`\n");
-        return 1;
-#endif
-        if (argc < 3) {
-            print_bench_usage();
-            return 1;
-        }
-        if (!strcmp(argv[2], "band")) {
-            if (argc < 6) {
-                print_bench_usage();
-                return 1;
-            }
-            return cmd_bench_display_band(atoi(argv[3]), atoi(argv[4]), atoi(argv[5]));
-        }
-        if (!strcmp(argv[2], "full")) {
-            return cmd_bench_display_full();
-        }
-        if (!strcmp(argv[2], "clean")) {
-            return cmd_bench_display_clean();
-        }
-        printf("unknown display subcommand: %s\n", argv[2]);
-        return 1;
-    }
-
     printf("unknown bench subcommand: %s\n", argv[1]);
     print_bench_usage();
     return 1;
@@ -1017,7 +821,7 @@ esp_err_t bench_init(void)
     const esp_console_cmd_t cmd = {
         .command = "bench",
         .help = "E-Ink board bring-up commands",
-        .hint = "info | fs | display | keys | audio | selftest",
+        .hint = "info | fs | keys | audio | epd1680 | ui | selftest",
         .func = cmd_bench,
     };
     err = esp_console_cmd_register(&cmd);
