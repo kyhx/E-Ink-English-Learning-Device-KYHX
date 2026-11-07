@@ -1,3 +1,20 @@
+> ## 分支：`lite-29`（2.9" 单屏精简版）
+>
+> 这个分支从 `main` 切出，**只保留 2.9" SSD1680（128×296）单屏路径**：
+>
+> | 保留 | 移除 |
+> | --- | --- |
+> | `components/epd_ssd1680`（真矩形局刷） | `components/epd_ssd1619a`（4.2" + 带状局刷 + partial LUT） |
+> | `main/ui29`（主菜单/单词/日历/同步/设置） | `main/word_view.c`、`main/app_state.c`、`main/ui/boot_clean.c` |
+> | `main/panel_test`、`main/services`、`main/board` | `main/collect`（4.2" 采集 UI）、`tools/gen_font.py`、`tools/preview_demo.py` |
+> | `main/bench`（info/fs/keys/audio/epd1680/ui） | `bench display band|full|clean`、`bench collect` |
+>
+> **烧录前不需要再切模式**：上电直接进单词卡主菜单。
+> 双屏对照（4.2" 709 ms 全刷 / 346 ms 带状局刷 vs 2.9" 2023 ms 全刷 / 469 ms 任意矩形局刷）
+> 的数据保留在 `docs/SSD1680测试记录.md` 和 `docs/局刷测试记录.md`，可直接作为论文附录。
+>
+> 回到完整版：`git switch main`。
+
 # E-Ink 英语学习机（ESP32-S3 + 4.2" 墨水屏）
 
 基于 **YD-ESP32-S3 / ESP32-S3-N16R8 + 墨水屏驱动板 V1.5 + 4.2 寸单色电子墨水屏（SSD1619A，400×300）** 的

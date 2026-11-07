@@ -1,33 +1,5 @@
 menu "E-Ink English Learning Device"
 
-    config APP_MODE_DEMO
-        bool "Run the legacy 50-word display demo at boot"
-        default n
-        help
-            Boot straight into the old 50-word / 346 ms band-refresh demo.
-            Useful as a display regression test.  When disabled, the M0
-            home screen + bench console is started instead.
-
-    config APP_MODE_COLLECT
-        bool "Run the data-collection UI at boot"
-        default n
-        help
-            Boot into the 5-key collection UI instead of the M2 audio page.
-            Records 2 s WAVs with speaker/word/label/take metadata under
-            /storage/collect.  APP_MODE_DEMO has priority if both are set.
-
-    config APP_MODE_EPD1680
-        bool "Run the 2.9\" SSD1680 panel self test at boot"
-        default n
-        help
-            Skip the 4.2" SSD1619A init entirely and boot into the 2.9"
-            SSD1680 (ZJY128296-029EAAMFGN, 128x296) self test: full white,
-            full black, a pattern page, two rectangle partial updates and a
-            fast refresh, each timed and printed on UART0.
-
-            Use `bench epd1680 ...` afterwards for individual steps.
-            APP_MODE_DEMO / APP_MODE_COLLECT are ignored in this mode.
-
     config APP_BENCH
         bool "Enable the UART0 bench console"
         default y
@@ -35,21 +7,16 @@ menu "E-Ink English Learning Device"
             Register the `bench` command on UART0 (115200 8N1).  Disable for
             a production build that should not expose bring-up commands.
 
+            Display commands live under `bench epd1680 ...` and `bench ui ...`;
+            the 4.2" SSD1619A path is not built in this branch.
+
     config APP_AUDIO_RECORD_MS
         int "Default recording length (ms)"
         default 2000
         range 200 5000
         help
-            Length of one M2 follow-along recording.  The training pipeline
+            Length of one follow-along recording.  The training pipeline
             expects 2.0 s; 2000 ms is the default.
-
-    config APP_BOOT_CLEAN
-        bool "Clean the e-paper panel on cold boot"
-        default y
-        help
-            On power-on / external reset / brownout, run white -> black ->
-            base image (about 2.1 s) before showing READY.  This removes
-            ghosting left by the previous session.  Software resets skip it.
 
     config APP_AUDIO_MIC_GAIN_X100
         int "Microphone digital gain x100"
